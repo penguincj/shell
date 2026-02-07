@@ -239,24 +239,29 @@ class QwenChat:
             await attach_btn.click()
             if DEBUG:
                 print(f"  [DEBUG] 点击附件按钮: {selector}")
-            await asyncio.sleep(0.3)
 
-            # 2. 使用 file chooser 拦截文件选择，点击"上传图片"
+            # 等待菜单展开
+            await asyncio.sleep(1)
+
+            # 2. 查找"上传图片"菜单项
+            upload_menu, selector = await find_element(
+                self.page,
+                SELECTORS["upload_image_menu"],
+                timeout=5000,
+                debug=DEBUG
+            )
+            if not upload_menu:
+                print("  ✗ 找不到上传图片菜单")
+                return False
+
+            if DEBUG:
+                print(f"  [DEBUG] 找到上传图片菜单: {selector}")
+
+            # 3. 使用 file chooser 拦截文件选择
             async with self.page.expect_file_chooser(timeout=10000) as fc_info:
-                # 点击上传图片菜单项
-                upload_menu, selector = await find_element(
-                    self.page,
-                    SELECTORS["upload_image_menu"],
-                    timeout=3000,
-                    debug=DEBUG
-                )
-                if upload_menu:
-                    await upload_menu.click()
-                    if DEBUG:
-                        print(f"  [DEBUG] 点击上传图片菜单: {selector}")
-                else:
-                    print("  ✗ 找不到上传图片菜单")
-                    return False
+                await upload_menu.click()
+                if DEBUG:
+                    print("  [DEBUG] 点击上传图片菜单")
 
             # 3. 设置文件
             file_chooser = await fc_info.value

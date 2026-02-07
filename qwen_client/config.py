@@ -97,8 +97,12 @@ SELECTORS = {
     # 上传图片菜单项
     "upload_image_menu": [
         'text=上传图片',
-        '[class*="upload"]:has-text("图片")',
+        ':text("上传图片")',
+        'span:has-text("上传图片")',
         'div:has-text("上传图片")',
+        '[class*="menuItem"]:has-text("图片")',
+        '[class*="menu"] >> text=上传图片',
+        '[role="menuitem"]:has-text("图片")',
     ],
     # 图片预览（上传完成的标识）
     "image_preview": [
