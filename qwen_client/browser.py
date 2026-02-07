@@ -72,7 +72,7 @@ class QwenBrowser:
         """加载状态并跳转到千问页面"""
         # 优先使用 storage_state（包含 cookies + localStorage）
         if STATE_FILE.exists():
-            print(f"✓ 已加载状态文件: {STATE_FILE}")
+            print(f"✓ 已找到状态文件: {STATE_FILE}")
             # 需要重新创建 context 来加载 storage_state
             await self.page.close()
             await self.context.close()
@@ -86,9 +86,21 @@ class QwenBrowser:
             )
             self.page = await self.context.new_page()
 
+            # 调试：打印加载的 cookies
+            if DEBUG:
+                loaded_cookies = await self.context.cookies()
+                print(f"  [DEBUG] 从状态文件加载了 {len(loaded_cookies)} 个 cookies")
+                for c in loaded_cookies[:5]:  # 只打印前5个
+                    print(f"    - {c.get('name')}: domain={c.get('domain')}")
+
             print("→ 正在加载页面...")
             await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
             await self.page.wait_for_load_state("networkidle", timeout=30000)
+
+            # 调试：打印页面加载后的 cookies
+            if DEBUG:
+                current_cookies = await self.context.cookies()
+                print(f"  [DEBUG] 页面加载后有 {len(current_cookies)} 个 cookies")
 
             if await self._check_logged_in():
                 self._is_logged_in = True
@@ -101,10 +113,18 @@ class QwenBrowser:
         # 兼容旧的 cookies 文件
         cookies = load_cookies(COOKIES_FILE)
         if cookies:
+            if DEBUG:
+                print(f"  [DEBUG] 从文件加载了 {len(cookies)} 个 cookies")
+
             await self.context.add_cookies(cookies)
             print("→ 正在加载页面...")
             await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
             await self.page.wait_for_load_state("networkidle", timeout=30000)
+
+            # 调试：打印页面加载后的 cookies
+            if DEBUG:
+                current_cookies = await self.context.cookies()
+                print(f"  [DEBUG] 页面加载后有 {len(current_cookies)} 个 cookies")
 
             if await self._check_logged_in():
                 self._is_logged_in = True
@@ -194,16 +214,23 @@ class QwenBrowser:
             raise
 
     async def save_current_cookies(self) -> None:
-        """保存当前状态（cookies + localStorage）"""
+        """保存当前状态"""
         # 确保目录存在
         STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+        # 获取当前 cookies
+        cookies = await self.context.cookies()
+
+        if DEBUG:
+            print(f"  [DEBUG] 保存 {len(cookies)} 个 cookies:")
+            for c in cookies:
+                print(f"    - {c.get('name')}: {c.get('value')[:20]}... (domain: {c.get('domain')})")
 
         # 保存完整的 storage state
         await self.context.storage_state(path=str(STATE_FILE))
         print(f"✓ 状态已保存到 {STATE_FILE}")
 
         # 同时保存 cookies（兼容）
-        cookies = await self.context.cookies()
         save_cookies(cookies, COOKIES_FILE)
 
     async def refresh_page(self) -> None:
