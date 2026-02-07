@@ -87,11 +87,10 @@ SELECTORS = {
     ],
     # 附件按钮（回形针图标）
     "attachment_button": [
-        '[aria-haspopup="dialog"]',
-        '[class*="functionArea"] [data-state]',
-        '[class*="right-"] button[data-state]',
+        '[class*="optionBtn"]',
+        '[class*="functionArea"] [class*="optionBtn"]',
+        'svg [href*="attachment"]',
         '[class*="attach"]',
-        '[class*="upload"]',
         '[class*="clip"]',
     ],
     # 上传图片菜单项
