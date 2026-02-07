@@ -27,13 +27,13 @@ TIMEOUT = {
 # 页面元素选择器（需要根据实际页面调整）
 # 可以使用多个备选选择器
 SELECTORS = {
-    # 输入框 - 多个备选
+    # 输入框 - 多个备选（通义千问使用 contenteditable 的 p 元素）
     "input_box": [
-        'textarea[id="chat-input"]',
-        'textarea[placeholder*="输入"]',
-        'textarea[placeholder*="消息"]',
-        'div[contenteditable="true"]',
-        '#chat-input',
+        '[class*="chatInput"] p',
+        '[class*="text-area-slot-container"] p',
+        '#message-list-scroller [contenteditable="true"]',
+        'div[contenteditable="true"] p',
+        '[class*="chatInput"]',
     ],
     # 发送按钮
     "send_button": [
@@ -41,13 +41,14 @@ SELECTORS = {
         'button[type="submit"]',
         'button[aria-label*="发送"]',
         'button[class*="send"]',
+        '[class*="sendBtn"]',
     ],
     # 消息容器
     "message_container": [
+        '#message-list-scroller',
         '.message-list',
         '.chat-messages',
         '[class*="message-container"]',
-        '[class*="chat-container"]',
     ],
     # AI回复消息
     "assistant_message": [
@@ -71,10 +72,9 @@ SELECTORS = {
     ],
     # 登录成功标识（确认已登录的元素）
     "logged_in_indicator": [
-        'textarea[id="chat-input"]',
-        'textarea[placeholder*="输入"]',
-        '[class*="chat-input"]',
-        '#chat-input',
+        '[class*="chatInput"]',
+        '[class*="text-area-slot-container"]',
+        '#message-list-scroller',
     ],
 }
 
