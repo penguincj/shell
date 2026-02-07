@@ -109,10 +109,12 @@ class QwenBrowser:
 
         # 等待登录成功标识出现
         try:
+            print("→ 开始检测登录状态...")
             element, selector = await find_element(
                 self.page,
                 SELECTORS["logged_in_indicator"],
-                timeout=TIMEOUT["login_wait"]
+                timeout=TIMEOUT["login_wait"],
+                debug=DEBUG
             )
             if element:
                 print(f"✓ 检测到登录成功 (selector: {selector})")

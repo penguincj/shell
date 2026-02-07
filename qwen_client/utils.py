@@ -5,15 +5,36 @@ from typing import Optional
 from playwright.async_api import Page
 
 
-async def find_element(page: Page, selectors: list[str], timeout: int = 5000):
-    """尝试多个选择器，返回第一个找到的元素"""
-    for selector in selectors:
-        try:
-            element = await page.wait_for_selector(selector, timeout=timeout)
-            if element:
-                return element, selector
-        except Exception:
-            continue
+async def find_element(page: Page, selectors: list[str], timeout: int = 5000, debug: bool = False):
+    """尝试多个选择器，返回第一个找到的元素
+
+    对于长超时场景，会循环快速尝试所有选择器，而不是每个选择器等待全部超时时间
+    """
+    import time
+    start_time = time.time()
+    per_selector_timeout = min(2000, timeout)  # 每个选择器最多等 2 秒
+
+    attempt = 0
+    while (time.time() - start_time) * 1000 < timeout:
+        attempt += 1
+        if debug and attempt == 1:
+            print(f"  尝试选择器列表: {selectors}")
+
+        for selector in selectors:
+            try:
+                element = await page.wait_for_selector(selector, timeout=per_selector_timeout)
+                if element:
+                    if debug:
+                        print(f"  ✓ 匹配成功: {selector}")
+                    return element, selector
+            except Exception:
+                continue
+
+        if debug and attempt == 1:
+            print(f"  ✗ 第一轮所有选择器均未匹配，继续轮询...")
+
+    if debug:
+        print(f"  ✗ 超时，共尝试 {attempt} 轮")
     return None, None
 
 
