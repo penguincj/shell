@@ -241,21 +241,41 @@ class QwenChat:
             if DEBUG:
                 print(f"  [DEBUG] 点击附件按钮: {selector}")
 
+            # 等待菜单展开
+            await asyncio.sleep(0.8)
+
+            # 调试：打印页面上包含"上传"文字的元素
+            if DEBUG:
+                print("  [DEBUG] 查找包含'上传'的元素...")
+                try:
+                    elements = await self.page.query_selector_all('*')
+                    for el in elements:
+                        try:
+                            text = await el.inner_text()
+                            if '上传' in text and len(text) < 20:
+                                tag = await el.evaluate('el => el.tagName')
+                                class_name = await el.evaluate('el => el.className')
+                                print(f"    - <{tag}> class=\"{class_name}\" text=\"{text}\"")
+                        except:
+                            pass
+                except Exception as e:
+                    print(f"  [DEBUG] 查找元素失败: {e}")
+
             # 2. 使用 file chooser 拦截文件选择
             async with self.page.expect_file_chooser(timeout=10000) as fc_info:
-                # 立即点击"上传图片"，使用 force=True 跳过可见性检查
+                # 点击"上传图片"
                 try:
-                    await self.page.click('text=上传图片', timeout=2000, force=True)
+                    await self.page.click('text=上传图片', timeout=3000)
                     if DEBUG:
-                        print("  [DEBUG] 点击上传图片菜单")
+                        print("  [DEBUG] 点击上传图片菜单成功")
                 except Exception as e:
                     if DEBUG:
                         print(f"  [DEBUG] text=上传图片 失败: {e}")
                     # 备选方案：使用 getByText
                     try:
-                        await self.page.get_by_text("上传图片", exact=True).click(timeout=2000, force=True)
+                        await self.page.get_by_text("上传图片", exact=True).click(timeout=2000)
                         if DEBUG:
-                            print("  [DEBUG] 使用 getByText 点击上传图片")
+                            print("  [DEBUG] 使用 getByText 点击上传图片成功")
                     except Exception as e2:
                         if DEBUG:
                             print(f"  [DEBUG] getByText 也失败: {e2}")
