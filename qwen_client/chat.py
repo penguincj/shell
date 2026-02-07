@@ -236,32 +236,36 @@ class QwenChat:
                 print("  ✗ 找不到附件按钮")
                 return False
 
-            await attach_btn.click()
+            # 使用 hover 展开菜单（而不是 click）
+            await attach_btn.hover()
             if DEBUG:
-                print(f"  [DEBUG] 点击附件按钮: {selector}")
+                print(f"  [DEBUG] 悬停附件按钮: {selector}")
 
             # 等待菜单展开
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
 
-            # 2. 查找"上传图片"菜单项
-            upload_menu, selector = await find_element(
-                self.page,
-                SELECTORS["upload_image_menu"],
-                timeout=5000,
-                debug=DEBUG
-            )
-            if not upload_menu:
-                print("  ✗ 找不到上传图片菜单")
-                return False
-
-            if DEBUG:
-                print(f"  [DEBUG] 找到上传图片菜单: {selector}")
-
-            # 3. 使用 file chooser 拦截文件选择
+            # 2. 使用 file chooser 拦截文件选择，同时点击"上传图片"
             async with self.page.expect_file_chooser(timeout=10000) as fc_info:
-                await upload_menu.click()
-                if DEBUG:
-                    print("  [DEBUG] 点击上传图片菜单")
+                # 直接使用 page.click 配合文字选择器
+                try:
+                    await self.page.click('text=上传图片', timeout=3000)
+                    if DEBUG:
+                        print("  [DEBUG] 点击上传图片菜单 (text=上传图片)")
+                except Exception:
+                    # 备选：尝试其他选择器
+                    upload_menu, selector = await find_element(
+                        self.page,
+                        SELECTORS["upload_image_menu"],
+                        timeout=3000,
+                        debug=DEBUG
+                    )
+                    if upload_menu:
+                        await upload_menu.click()
+                        if DEBUG:
+                            print(f"  [DEBUG] 点击上传图片菜单: {selector}")
+                    else:
+                        print("  ✗ 找不到上传图片菜单")
+                        return False
 
             # 3. 设置文件
             file_chooser = await fc_info.value
