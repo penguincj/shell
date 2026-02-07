@@ -5,6 +5,8 @@ from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from .config import (
     QWEN_URL,
     COOKIES_FILE,
+    STATE_FILE,
+    STATE_DIR,
     TIMEOUT,
     SELECTORS,
     BROWSER_CONFIG,
@@ -67,17 +69,43 @@ class QwenBrowser:
         print("✓ 浏览器已启动")
 
     async def load_cookies_and_goto(self) -> bool:
-        """加载 cookies 并跳转到千问页面"""
-        cookies = load_cookies(COOKIES_FILE)
+        """加载状态并跳转到千问页面"""
+        # 优先使用 storage_state（包含 cookies + localStorage）
+        if STATE_FILE.exists():
+            print(f"✓ 已加载状态文件: {STATE_FILE}")
+            # 需要重新创建 context 来加载 storage_state
+            await self.page.close()
+            await self.context.close()
 
+            self.context = await self.browser.new_context(
+                user_agent=BROWSER_CONFIG["user_agent"],
+                viewport={"width": 1280, "height": 800},
+                locale="zh-CN",
+                timezone_id="Asia/Shanghai",
+                storage_state=str(STATE_FILE),
+            )
+            self.page = await self.context.new_page()
+
+            print("→ 正在加载页面...")
+            await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
+            await self.page.wait_for_load_state("networkidle", timeout=30000)
+
+            if await self._check_logged_in():
+                self._is_logged_in = True
+                print("✓ 登录状态有效")
+                return True
+            else:
+                print("✗ 状态已过期，需要重新登录")
+                return False
+
+        # 兼容旧的 cookies 文件
+        cookies = load_cookies(COOKIES_FILE)
         if cookies:
             await self.context.add_cookies(cookies)
             print("→ 正在加载页面...")
             await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
-            # 等待页面稳定
             await self.page.wait_for_load_state("networkidle", timeout=30000)
 
-            # 检查是否已登录
             if await self._check_logged_in():
                 self._is_logged_in = True
                 print("✓ 登录状态有效")
@@ -85,12 +113,11 @@ class QwenBrowser:
             else:
                 print("✗ Cookies 已过期，需要重新登录")
                 return False
-        else:
-            print("→ 未找到 Cookies，需要登录")
-            await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
-            # 等待页面稳定
-            await self.page.wait_for_load_state("networkidle", timeout=30000)
-            return False
+
+        print("→ 未找到登录状态，需要登录")
+        await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
+        await self.page.wait_for_load_state("networkidle", timeout=30000)
+        return False
 
     async def _check_logged_in(self) -> bool:
         """检查是否已登录"""
@@ -149,7 +176,16 @@ class QwenBrowser:
                 print(f"✓ 检测到登录成功 (selector: {selector})")
                 self._is_logged_in = True
 
-                # 保存 cookies
+                # 等待一段时间确保登录状态完全生效
+                print("→ 等待登录状态稳定...")
+                await asyncio.sleep(3)
+
+                # 刷新页面确保状态完整
+                await self.page.reload()
+                await self.page.wait_for_load_state("networkidle", timeout=30000)
+                await asyncio.sleep(2)
+
+                # 保存完整状态
                 await self.save_current_cookies()
             else:
                 raise Exception("登录超时")
@@ -158,7 +194,15 @@ class QwenBrowser:
             raise
 
     async def save_current_cookies(self) -> None:
-        """保存当前 cookies"""
+        """保存当前状态（cookies + localStorage）"""
+        # 确保目录存在
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+        # 保存完整的 storage state
+        await self.context.storage_state(path=str(STATE_FILE))
+        print(f"✓ 状态已保存到 {STATE_FILE}")
+
+        # 同时保存 cookies（兼容）
         cookies = await self.context.cookies()
         save_cookies(cookies, COOKIES_FILE)
 

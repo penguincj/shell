@@ -5,7 +5,11 @@ from pathlib import Path
 # 项目根目录
 ROOT_DIR = Path(__file__).parent.parent
 
-# Cookie 存储路径
+# 状态存储路径（包含 Cookies + localStorage + sessionStorage）
+STATE_DIR = ROOT_DIR / "state"
+STATE_FILE = STATE_DIR / "qwen_state.json"
+
+# 兼容旧的 Cookies 路径
 COOKIES_DIR = ROOT_DIR / "cookies"
 COOKIES_FILE = COOKIES_DIR / "qwen_cookies.json"
 
