@@ -74,6 +74,8 @@ class QwenBrowser:
             await self.context.add_cookies(cookies)
             print("→ 正在加载页面...")
             await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
+            # 等待页面稳定
+            await self.page.wait_for_load_state("networkidle", timeout=30000)
 
             # 检查是否已登录
             if await self._check_logged_in():
@@ -86,18 +88,27 @@ class QwenBrowser:
         else:
             print("→ 未找到 Cookies，需要登录")
             await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
+            # 等待页面稳定
+            await self.page.wait_for_load_state("networkidle", timeout=30000)
             return False
 
     async def _check_logged_in(self) -> bool:
         """检查是否已登录"""
         try:
-            element, _ = await find_element(
+            if DEBUG:
+                print("→ 检查登录状态...")
+            element, selector = await find_element(
                 self.page,
                 SELECTORS["logged_in_indicator"],
-                timeout=5000
+                timeout=5000,
+                debug=DEBUG
             )
+            if element and DEBUG:
+                print(f"  ✓ 检测到登录元素: {selector}")
             return element is not None
-        except Exception:
+        except Exception as e:
+            if DEBUG:
+                print(f"  ✗ 检查登录状态异常: {e}")
             return False
 
     async def wait_for_login(self) -> None:
@@ -110,6 +121,10 @@ class QwenBrowser:
         # 等待登录成功标识出现
         try:
             print("→ 开始检测登录状态...")
+            # 先等待页面网络稳定
+            await self.page.wait_for_load_state("networkidle", timeout=30000)
+            print("→ 页面加载完成，开始检测登录元素...")
+
             element, selector = await find_element(
                 self.page,
                 SELECTORS["logged_in_indicator"],
