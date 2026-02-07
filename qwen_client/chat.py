@@ -53,27 +53,56 @@ class QwenChat:
 
         # 清空并输入新内容
         await input_box.click()
-        await input_box.fill("")
-        await input_box.fill(prompt)
+        # 对于 contenteditable 元素，先选中全部再删除
+        await self.page.keyboard.press("Control+a")
+        await self.page.keyboard.press("Backspace")
+        # 使用 type 而不是 fill，更适合 contenteditable 元素
+        await self.page.keyboard.type(prompt, delay=50)
 
         # 短暂等待确保输入完成
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.5)
 
-        # 发送消息
+        # 发送消息 - 优先尝试点击发送按钮
+        sent = False
         if self._send_selector:
             try:
                 send_btn = await self.page.wait_for_selector(
                     self._send_selector,
                     timeout=3000
                 )
-                if send_btn:
+                if send_btn and await send_btn.is_visible():
                     await send_btn.click()
-            except Exception:
-                # 发送按钮不可用，尝试回车
-                await input_box.press("Enter")
-        else:
-            # 没有发送按钮，使用回车
-            await input_box.press("Enter")
+                    sent = True
+                    print("  [DEBUG] 点击发送按钮")
+            except Exception as e:
+                print(f"  [DEBUG] 发送按钮点击失败: {e}")
+
+        # 如果没有发送按钮或点击失败，尝试直接查找并点击页面上可见的发送按钮
+        if not sent:
+            # 尝试更多发送按钮选择器
+            fallback_selectors = [
+                '[class*="sendBtn"]',
+                '[class*="send-btn"]',
+                '[class*="submit"]',
+                'button:has(svg[class*="arrow"])',
+                '[class*="chatInput"] ~ button',
+                '[class*="text-area-slot-container"] button',
+            ]
+            for sel in fallback_selectors:
+                try:
+                    btn = await self.page.wait_for_selector(sel, timeout=1000)
+                    if btn and await btn.is_visible():
+                        await btn.click()
+                        sent = True
+                        print(f"  [DEBUG] 使用备选按钮发送: {sel}")
+                        break
+                except Exception:
+                    continue
+
+        # 最后尝试回车发送
+        if not sent:
+            print("  [DEBUG] 尝试使用回车发送")
+            await self.page.keyboard.press("Enter")
 
         print("→ 等待 AI 响应...")
 
