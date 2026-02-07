@@ -97,6 +97,20 @@ class QwenBrowser:
         try:
             if DEBUG:
                 print("→ 检查登录状态...")
+
+            # 先检查是否有"立即登录"按钮（未登录标识）
+            not_logged_in, selector = await find_element(
+                self.page,
+                SELECTORS["not_logged_in_indicator"],
+                timeout=3000,
+                debug=False
+            )
+            if not_logged_in:
+                if DEBUG:
+                    print(f"  ✗ 检测到未登录标识: {selector}")
+                return False
+
+            # 再检查是否有登录后才出现的元素
             element, selector = await find_element(
                 self.page,
                 SELECTORS["logged_in_indicator"],

@@ -37,11 +37,12 @@ SELECTORS = {
     ],
     # 发送按钮
     "send_button": [
+        '[class*="operateBtn"]',
+        '[class*="sendBtn"]',
         'button[id="send-button"]',
         'button[type="submit"]',
         'button[aria-label*="发送"]',
         'button[class*="send"]',
-        '[class*="sendBtn"]',
     ],
     # 消息容器
     "message_container": [
@@ -75,6 +76,12 @@ SELECTORS = {
         '[class*="chatInput"]',
         '[class*="text-area-slot-container"]',
         '#message-list-scroller',
+    ],
+    # 未登录标识（如果这些元素存在，说明未登录）
+    "not_logged_in_indicator": [
+        'button:has-text("立即登录")',
+        'a:has-text("立即登录")',
+        '[class*="login"]:has-text("立即登录")',
     ],
 }
 
