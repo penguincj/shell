@@ -236,34 +236,29 @@ class QwenChat:
                 print("  ✗ 找不到附件按钮")
                 return False
 
-            # 使用 hover 展开菜单（而不是 click）
-            await attach_btn.hover()
+            # 点击展开菜单
+            await attach_btn.click()
             if DEBUG:
-                print(f"  [DEBUG] 悬停附件按钮: {selector}")
+                print(f"  [DEBUG] 点击附件按钮: {selector}")
 
-            # 等待菜单展开
-            await asyncio.sleep(0.5)
-
-            # 2. 使用 file chooser 拦截文件选择，同时点击"上传图片"
+            # 2. 使用 file chooser 拦截文件选择
             async with self.page.expect_file_chooser(timeout=10000) as fc_info:
-                # 直接使用 page.click 配合文字选择器
+                # 立即点击"上传图片"，使用 force=True 跳过可见性检查
                 try:
-                    await self.page.click('text=上传图片', timeout=3000)
+                    await self.page.click('text=上传图片', timeout=2000, force=True)
                     if DEBUG:
-                        print("  [DEBUG] 点击上传图片菜单 (text=上传图片)")
-                except Exception:
-                    # 备选：尝试其他选择器
-                    upload_menu, selector = await find_element(
-                        self.page,
-                        SELECTORS["upload_image_menu"],
-                        timeout=3000,
-                        debug=DEBUG
-                    )
-                    if upload_menu:
-                        await upload_menu.click()
+                        print("  [DEBUG] 点击上传图片菜单")
+                except Exception as e:
+                    if DEBUG:
+                        print(f"  [DEBUG] text=上传图片 失败: {e}")
+                    # 备选方案：使用 getByText
+                    try:
+                        await self.page.get_by_text("上传图片", exact=True).click(timeout=2000, force=True)
                         if DEBUG:
-                            print(f"  [DEBUG] 点击上传图片菜单: {selector}")
-                    else:
+                            print("  [DEBUG] 使用 getByText 点击上传图片")
+                    except Exception as e2:
+                        if DEBUG:
+                            print(f"  [DEBUG] getByText 也失败: {e2}")
                         print("  ✗ 找不到上传图片菜单")
                         return False
 
