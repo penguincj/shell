@@ -179,36 +179,56 @@ class QwenBrowser:
         print("支持: 扫码登录 / 账号密码登录")
         print("=" * 50 + "\n")
 
-        # 等待登录成功标识出现
         try:
-            print("→ 开始检测登录状态...")
-            # 先等待页面网络稳定
-            await self.page.wait_for_load_state("networkidle", timeout=30000)
-            print("→ 页面加载完成，开始检测登录元素...")
+            print("→ 等待用户完成登录...")
 
-            element, selector = await find_element(
-                self.page,
-                SELECTORS["logged_in_indicator"],
-                timeout=TIMEOUT["login_wait"],
-                debug=DEBUG
-            )
-            if element:
-                print(f"✓ 检测到登录成功 (selector: {selector})")
-                self._is_logged_in = True
+            # 核心逻辑：等待"立即登录"按钮消失（说明用户已登录）
+            # 使用轮询方式检测
+            import time
+            start_time = time.time()
+            timeout_seconds = TIMEOUT["login_wait"] / 1000
 
-                # 等待一段时间确保登录状态完全生效
-                print("→ 等待登录状态稳定...")
-                await asyncio.sleep(3)
+            while (time.time() - start_time) < timeout_seconds:
+                # 检查"立即登录"按钮是否还存在
+                not_logged_in, _ = await find_element(
+                    self.page,
+                    SELECTORS["not_logged_in_indicator"],
+                    timeout=2000,
+                    debug=False
+                )
 
-                # 刷新页面确保状态完整
-                await self.page.reload()
-                await self.page.wait_for_load_state("networkidle", timeout=30000)
-                await asyncio.sleep(2)
+                if not not_logged_in:
+                    # "立即登录"按钮消失了，说明已登录
+                    print("✓ 检测到登录成功（登录按钮已消失）")
+                    self._is_logged_in = True
 
-                # 保存完整状态
-                await self.save_current_cookies()
-            else:
-                raise Exception("登录超时")
+                    # 等待一段时间确保登录状态完全生效
+                    print("→ 等待登录状态稳定...")
+                    await asyncio.sleep(3)
+
+                    # 刷新页面确保状态完整
+                    await self.page.reload()
+                    await self.page.wait_for_load_state("networkidle", timeout=30000)
+                    await asyncio.sleep(2)
+
+                    # 再次确认登录状态
+                    not_logged_in_check, _ = await find_element(
+                        self.page,
+                        SELECTORS["not_logged_in_indicator"],
+                        timeout=3000,
+                        debug=False
+                    )
+                    if not_logged_in_check:
+                        print("  [WARN] 刷新后登录状态丢失，继续等待...")
+                        continue
+
+                    # 保存完整状态
+                    await self.save_current_cookies()
+                    return
+
+                await asyncio.sleep(1)
+
+            raise Exception("登录超时")
         except Exception as e:
             print(f"✗ 登录失败: {e}")
             raise
