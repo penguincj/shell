@@ -9,6 +9,9 @@ Usage:
     # 单次提问
     python main.py "你好，介绍一下你自己"
 
+    # 带图片提问
+    python main.py "描述这张图片" --image /path/to/image.png
+
     # 调试模式（有头浏览器，慢速）
     DEBUG=1 SLOW_MO=500 python main.py "帮我搜索今天的新闻"
 
@@ -43,7 +46,7 @@ async def login_only():
         await browser.close()
 
 
-async def single_query(prompt: str):
+async def single_query(prompt: str, image_path: str = None):
     """单次提问"""
     browser = QwenBrowser()
     try:
@@ -58,7 +61,12 @@ async def single_query(prompt: str):
                 return
 
         chat = QwenChat(browser.page)
-        response = await chat.send_message(prompt)
+
+        # 根据是否有图片选择不同的发送方式
+        if image_path:
+            response = await chat.send_message_with_image(prompt, image_path)
+        else:
+            response = await chat.send_message(prompt)
 
         print("\n" + "=" * 50)
         print("AI 回复:")
@@ -141,6 +149,11 @@ def main():
         action="store_true",
         help="进入交互模式"
     )
+    parser.add_argument(
+        "--image", "-img",
+        type=str,
+        help="要上传的图片路径"
+    )
 
     args = parser.parse_args()
 
@@ -149,12 +162,13 @@ def main():
     elif args.interactive:
         asyncio.run(interactive_mode())
     elif args.prompt:
-        asyncio.run(single_query(args.prompt))
+        asyncio.run(single_query(args.prompt, args.image))
     else:
         parser.print_help()
         print("\n示例:")
         print("  DEBUG=1 python main.py --login        # 首次登录")
         print("  python main.py '你好'                 # 单次提问")
+        print("  python main.py '描述图片' --image a.png  # 带图片提问")
         print("  python main.py -i                     # 交互模式")
 
 

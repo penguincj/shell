@@ -85,6 +85,27 @@ SELECTORS = {
         'a:has-text("立即登录")',
         '[class*="login"]:has-text("立即登录")',
     ],
+    # 附件按钮（回形针图标）
+    "attachment_button": [
+        '[class*="attach"]',
+        '[class*="upload"]',
+        '[class*="clip"]',
+        '[aria-label*="附件"]',
+        '[aria-label*="上传"]',
+    ],
+    # 上传图片菜单项
+    "upload_image_menu": [
+        'text=上传图片',
+        '[class*="upload"]:has-text("图片")',
+        'div:has-text("上传图片")',
+    ],
+    # 图片预览（上传完成的标识）
+    "image_preview": [
+        '[data-component="ImageBox"]',
+        '[class*="imageBox"]',
+        '[class*="preview"] img',
+        '[class*="avatar"] img',
+    ],
 }
 
 # 浏览器配置

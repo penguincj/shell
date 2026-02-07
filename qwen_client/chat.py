@@ -1,8 +1,9 @@
 """聊天逻辑模块"""
 import asyncio
+from pathlib import Path
 from playwright.async_api import Page
 
-from .config import SELECTORS, TIMEOUT
+from .config import SELECTORS, TIMEOUT, DEBUG
 from .utils import find_element, find_all_elements
 
 
@@ -206,6 +207,99 @@ class QwenChat:
             except Exception:
                 return ""
         return ""
+
+    async def upload_image(self, image_path: str) -> bool:
+        """上传图片
+
+        Args:
+            image_path: 图片文件路径
+
+        Returns:
+            是否上传成功
+        """
+        # 检查文件是否存在
+        if not Path(image_path).exists():
+            print(f"  ✗ 图片文件不存在: {image_path}")
+            return False
+
+        print(f"→ 上传图片: {image_path}")
+
+        try:
+            # 1. 点击附件按钮
+            attach_btn, selector = await find_element(
+                self.page,
+                SELECTORS["attachment_button"],
+                timeout=5000,
+                debug=DEBUG
+            )
+            if not attach_btn:
+                print("  ✗ 找不到附件按钮")
+                return False
+
+            await attach_btn.click()
+            if DEBUG:
+                print(f"  [DEBUG] 点击附件按钮: {selector}")
+            await asyncio.sleep(0.3)
+
+            # 2. 使用 file chooser 拦截文件选择，点击"上传图片"
+            async with self.page.expect_file_chooser(timeout=10000) as fc_info:
+                # 点击上传图片菜单项
+                upload_menu, selector = await find_element(
+                    self.page,
+                    SELECTORS["upload_image_menu"],
+                    timeout=3000,
+                    debug=DEBUG
+                )
+                if upload_menu:
+                    await upload_menu.click()
+                    if DEBUG:
+                        print(f"  [DEBUG] 点击上传图片菜单: {selector}")
+                else:
+                    print("  ✗ 找不到上传图片菜单")
+                    return False
+
+            # 3. 设置文件
+            file_chooser = await fc_info.value
+            await file_chooser.set_files(image_path)
+            print("  → 图片已选择，等待上传...")
+
+            # 4. 等待图片预览出现（确认上传完成）
+            preview, _ = await find_element(
+                self.page,
+                SELECTORS["image_preview"],
+                timeout=15000,
+                debug=DEBUG
+            )
+            if preview:
+                print("  ✓ 图片上传完成")
+                return True
+            else:
+                print("  [WARN] 未检测到图片预览，但继续执行")
+                return True
+
+        except Exception as e:
+            print(f"  ✗ 上传图片失败: {e}")
+            return False
+
+    async def send_message_with_image(self, prompt: str, image_path: str) -> str:
+        """发送带图片的消息
+
+        Args:
+            prompt: 文字内容
+            image_path: 图片路径
+
+        Returns:
+            AI 回复内容
+        """
+        # 先上传图片
+        if not await self.upload_image(image_path):
+            raise Exception("图片上传失败")
+
+        # 短暂等待
+        await asyncio.sleep(0.5)
+
+        # 发送消息
+        return await self.send_message(prompt)
 
     async def new_chat(self) -> None:
         """开启新对话（如果页面支持）"""
