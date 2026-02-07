@@ -53,10 +53,11 @@ SELECTORS = {
     ],
     # AI回复消息
     "assistant_message": [
+        '[class*="markdown-pc-special"]',
+        '[class*="qk-markdown"]',
         '[class*="assistant"]',
         '[class*="bot-message"]',
         '[data-role="assistant"]',
-        '.response-content',
     ],
     # 停止生成按钮（用于判断是否还在生成）
     "stop_button": [
@@ -64,8 +65,9 @@ SELECTORS = {
         'button[class*="stop"]',
         '[class*="stop-generating"]',
     ],
-    # 加载指示器
+    # 加载指示器（正在生成中）
     "loading": [
+        '[class*="qk-markdown"]:not([class*="complete"])',
         '[class*="loading"]',
         '[class*="typing"]',
         '[class*="generating"]',
