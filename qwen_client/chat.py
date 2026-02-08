@@ -123,7 +123,7 @@ class QwenChat:
         )
         return len(messages)
 
-    async def _wait_for_new_message(self, count_before: int, max_wait: int = 30) -> None:
+    async def _wait_for_new_message(self, count_before: int, max_wait: int = 5) -> None:
         """等待新消息出现"""
         for _ in range(max_wait * 2):  # 每0.5秒检查一次
             messages, _ = await find_all_elements(
@@ -139,7 +139,7 @@ class QwenChat:
         """等待响应完成并返回内容"""
         last_content = ""
         stable_count = 0
-        max_stable = 6  # 内容稳定3秒（每0.5秒检查）
+        max_stable = 3  # 内容稳定1.5秒（每0.5秒检查）
         timeout_counter = 0
         max_timeout = TIMEOUT["response_wait"] // 500  # 转换为检查次数
 
