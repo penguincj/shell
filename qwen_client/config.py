@@ -89,10 +89,11 @@ SELECTORS = {
         'a:has-text("立即登录")',
         '[class*="login"]:has-text("立即登录")',
     ],
-    # 附件按钮（回形针图标）
+    # 附件按钮（回形针图标）- 更精确的选择器优先，避免匹配到消息操作按钮
     "attachment_button": [
-        '[class*="optionBtn"]',
         '[class*="functionArea"] [class*="optionBtn"]',
+        '[class*="chatInput"] ~ [class*="optionBtn"]',
+        '[class*="optionBtn"]',
         'svg [href*="attachment"]',
         '[class*="attach"]',
         '[class*="clip"]',

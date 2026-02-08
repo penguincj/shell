@@ -198,86 +198,105 @@ class QwenChat:
 
         print(f"→ 上传图片: {image_path}")
 
-        try:
-            # 1. 点击附件按钮
-            attach_btn, selector = await find_element(
-                self.page,
-                SELECTORS["attachment_button"],
-                timeout=5000,
-                debug=DEBUG
-            )
-            if not attach_btn:
-                print("  ✗ 找不到附件按钮")
-                return False
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # 1. 点击附件按钮
+                attach_btn, selector = await find_element(
+                    self.page,
+                    SELECTORS["attachment_button"],
+                    timeout=5000,
+                    debug=DEBUG and attempt == 0
+                )
+                if not attach_btn:
+                    print("  ✗ 找不到附件按钮")
+                    return False
 
-            # 点击展开菜单
-            await attach_btn.click()
-            if DEBUG:
-                print(f"  [DEBUG] 点击附件按钮: {selector}")
+                # 点击展开菜单
+                await attach_btn.click()
+                if DEBUG:
+                    print(f"  [DEBUG] 点击附件按钮: {selector}")
 
-            # 等待菜单展开
-            await asyncio.sleep(0.8)
+                # 等待菜单展开
+                await asyncio.sleep(0.8)
 
-            # 调试：打印页面上包含"上传"文字的元素
-            if DEBUG:
-                print("  [DEBUG] 查找包含'上传'的元素...")
+                # 验证下拉菜单是否出现
+                menu_item = None
                 try:
-                    elements = await self.page.query_selector_all('*')
-                    for el in elements:
-                        try:
-                            text = await el.inner_text()
-                            if '上传' in text and len(text) < 20:
-                                tag = await el.evaluate('el => el.tagName')
-                                class_name = await el.evaluate('el => el.className')
-                                print(f"    - <{tag}> class=\"{class_name}\" text=\"{text}\"")
-                        except:
-                            pass
-                except Exception as e:
-                    print(f"  [DEBUG] 查找元素失败: {e}")
+                    menu_item = await self.page.wait_for_selector('text=上传图片', timeout=2000)
+                    if menu_item and not await menu_item.is_visible():
+                        menu_item = None
+                except Exception:
+                    pass
 
-            # 2. 使用 file chooser 拦截文件选择
-            async with self.page.expect_file_chooser(timeout=10000) as fc_info:
-                # 点击"上传图片"
-                try:
-                    await self.page.click('text=上传图片', timeout=3000)
+                if not menu_item:
+                    if DEBUG:
+                        print(f"  [DEBUG] 下拉菜单未出现 (尝试 {attempt + 1}/{max_retries})")
+                    # 点击空白处关闭可能的弹出状态，然后重试
+                    try:
+                        await self.page.mouse.click(10, 10)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.5)
+                    continue
+
+                # 调试：打印页面上包含"上传"文字的元素
+                if DEBUG and attempt == 0:
+                    print("  [DEBUG] 查找包含'上传'的元素...")
+                    try:
+                        elements = await self.page.query_selector_all('*')
+                        for el in elements:
+                            try:
+                                text = await el.inner_text()
+                                if '上传' in text and len(text) < 20:
+                                    tag = await el.evaluate('el => el.tagName')
+                                    class_name = await el.evaluate('el => el.className')
+                                    print(f"    - <{tag}> class=\"{class_name}\" text=\"{text}\"")
+                            except:
+                                pass
+                    except Exception as e:
+                        print(f"  [DEBUG] 查找元素失败: {e}")
+
+                # 2. 使用 file chooser 拦截文件选择，直接点击已找到的菜单项
+                async with self.page.expect_file_chooser(timeout=10000) as fc_info:
+                    await menu_item.click()
                     if DEBUG:
                         print("  [DEBUG] 点击上传图片菜单成功")
-                except Exception as e:
+
+                # 3. 设置文件
+                file_chooser = await fc_info.value
+                await file_chooser.set_files(image_path)
+                print("  → 图片已选择，等待上传...")
+
+                # 4. 等待图片预览出现（确认上传完成）
+                preview, _ = await find_element(
+                    self.page,
+                    SELECTORS["image_preview"],
+                    timeout=15000,
+                    debug=DEBUG
+                )
+                if preview:
+                    print("  ✓ 图片上传完成")
+                    return True
+                else:
+                    print("  [WARN] 未检测到图片预览，但继续执行")
+                    return True
+
+            except Exception as e:
+                if attempt < max_retries - 1:
                     if DEBUG:
-                        print(f"  [DEBUG] text=上传图片 失败: {e}")
-                    # 备选方案：使用 getByText
+                        print(f"  [DEBUG] 上传尝试 {attempt + 1} 失败: {e}，重试中...")
                     try:
-                        await self.page.get_by_text("上传图片", exact=True).click(timeout=2000)
-                        if DEBUG:
-                            print("  [DEBUG] 使用 getByText 点击上传图片成功")
-                    except Exception as e2:
-                        if DEBUG:
-                            print(f"  [DEBUG] getByText 也失败: {e2}")
-                        print("  ✗ 找不到上传图片菜单")
-                        return False
+                        await self.page.mouse.click(10, 10)
+                    except Exception:
+                        pass
+                    await asyncio.sleep(1)
+                else:
+                    print(f"  ✗ 上传图片失败: {e}")
+                    return False
 
-            # 3. 设置文件
-            file_chooser = await fc_info.value
-            await file_chooser.set_files(image_path)
-            print("  → 图片已选择，等待上传...")
-
-            # 4. 等待图片预览出现（确认上传完成）
-            preview, _ = await find_element(
-                self.page,
-                SELECTORS["image_preview"],
-                timeout=15000,
-                debug=DEBUG
-            )
-            if preview:
-                print("  ✓ 图片上传完成")
-                return True
-            else:
-                print("  [WARN] 未检测到图片预览，但继续执行")
-                return True
-
-        except Exception as e:
-            print(f"  ✗ 上传图片失败: {e}")
-            return False
+        print("  ✗ 上传图片失败：多次重试后仍无法打开上传菜单")
+        return False
 
     async def send_message_with_image(self, prompt: str, image_path: str) -> str:
         """发送带图片的消息
@@ -289,7 +308,10 @@ class QwenChat:
         Returns:
             AI 回复内容
         """
-        # 先上传图片
+        # 先开启新对话，确保在干净的聊天页面（避免已有对话影响元素匹配）
+        await self.new_chat()
+
+        # 上传图片
         if not await self.upload_image(image_path):
             raise Exception("图片上传失败")
 
@@ -301,11 +323,16 @@ class QwenChat:
 
     async def new_chat(self) -> None:
         """开启新对话（如果页面支持）"""
+        # 重置缓存的选择器（新页面可能需要重新查找）
+        self._input_selector = None
+        self._send_selector = None
+
         # 尝试查找新对话按钮
         new_chat_selectors = [
             'button[aria-label*="新对话"]',
             'button[aria-label*="新建"]',
             '[class*="new-chat"]',
+            '[class*="newChat"]',
             'a[href="/chat"]',
         ]
         btn, _ = await find_element(self.page, new_chat_selectors, timeout=3000)
@@ -314,6 +341,9 @@ class QwenChat:
             await asyncio.sleep(1)
             print("✓ 已开启新对话")
         else:
-            print("  [INFO] 未找到新对话按钮，刷新页面...")
-            await self.page.reload()
-            await asyncio.sleep(2)
+            # 直接导航到聊天首页，确保获得干净的对话页面
+            from .config import QWEN_URL, TIMEOUT
+            print("  [INFO] 未找到新对话按钮，导航到聊天首页...")
+            await self.page.goto(QWEN_URL, wait_until="domcontentloaded", timeout=TIMEOUT["navigation"])
+            await self.page.wait_for_load_state("networkidle", timeout=30000)
+            await asyncio.sleep(1)
