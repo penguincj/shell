@@ -94,7 +94,7 @@ class QwenBrowser:
                     print(f"    - {c.get('name')}: domain={c.get('domain')}")
 
             print("→ 正在加载页面...")
-            await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
+            await self.page.goto(QWEN_URL, wait_until="domcontentloaded", timeout=TIMEOUT["navigation"])
             await self.page.wait_for_load_state("networkidle", timeout=30000)
 
             # 调试：打印页面加载后的 cookies
@@ -118,7 +118,7 @@ class QwenBrowser:
 
             await self.context.add_cookies(cookies)
             print("→ 正在加载页面...")
-            await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
+            await self.page.goto(QWEN_URL, wait_until="domcontentloaded", timeout=TIMEOUT["navigation"])
             await self.page.wait_for_load_state("networkidle", timeout=30000)
 
             # 调试：打印页面加载后的 cookies
@@ -135,7 +135,7 @@ class QwenBrowser:
                 return False
 
         print("→ 未找到登录状态，需要登录")
-        await self.page.goto(QWEN_URL, timeout=TIMEOUT["navigation"])
+        await self.page.goto(QWEN_URL, wait_until="domcontentloaded", timeout=TIMEOUT["navigation"])
         await self.page.wait_for_load_state("networkidle", timeout=30000)
         return False
 
