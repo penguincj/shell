@@ -337,11 +337,6 @@ class QwenChat:
         """
         t_total = time.time()
 
-        # 先开启新对话，确保在干净的聊天页面（避免已有对话影响元素匹配）
-        await self.new_chat()
-        if DEBUG:
-            print(f"  [TIMING] new_chat: {time.time() - t_total:.1f}s")
-
         # 上传图片
         if not await self.upload_image(image_path):
             raise Exception("图片上传失败")
