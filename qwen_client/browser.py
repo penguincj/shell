@@ -1,5 +1,6 @@
 """浏览器核心模块"""
 import asyncio
+import time
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 
 from .config import (
@@ -30,6 +31,7 @@ class QwenBrowser:
         if headless is None:
             headless = BROWSER_CONFIG["headless"]
 
+        t_start = time.time()
         print(f"→ 启动浏览器 (headless={headless})...")
 
         self.playwright = await async_playwright().start()
@@ -66,10 +68,14 @@ class QwenBrowser:
         """)
 
         self.page = await self.context.new_page()
+        if DEBUG:
+            print(f"  [TIMING] 浏览器启动: {time.time() - t_start:.1f}s")
         print("✓ 浏览器已启动")
 
     async def load_cookies_and_goto(self) -> bool:
         """加载状态并跳转到千问页面"""
+        t_start = time.time()
+
         # 优先使用 storage_state（包含 cookies + localStorage）
         if STATE_FILE.exists():
             print(f"✓ 已找到状态文件: {STATE_FILE}")
@@ -93,6 +99,7 @@ class QwenBrowser:
                 for c in loaded_cookies[:5]:  # 只打印前5个
                     print(f"    - {c.get('name')}: domain={c.get('domain')}")
 
+            t_nav = time.time()
             print("→ 正在加载页面...")
             await self.page.goto(QWEN_URL, wait_until="domcontentloaded", timeout=TIMEOUT["navigation"])
             await self.page.wait_for_load_state("networkidle", timeout=30000)
@@ -101,9 +108,14 @@ class QwenBrowser:
             if DEBUG:
                 current_cookies = await self.context.cookies()
                 print(f"  [DEBUG] 页面加载后有 {len(current_cookies)} 个 cookies")
+                print(f"  [TIMING] 页面导航: {time.time() - t_nav:.1f}s")
 
+            t_login_check = time.time()
             if await self._check_logged_in():
                 self._is_logged_in = True
+                if DEBUG:
+                    print(f"  [TIMING] 登录检查: {time.time() - t_login_check:.1f}s")
+                    print(f"  [TIMING] load_cookies_and_goto 总耗时: {time.time() - t_start:.1f}s")
                 print("✓ 登录状态有效")
                 return True
             else:

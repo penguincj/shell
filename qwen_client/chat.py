@@ -1,5 +1,6 @@
 """聊天逻辑模块"""
 import asyncio
+import time
 from pathlib import Path
 from playwright.async_api import Page
 
@@ -39,6 +40,7 @@ class QwenChat:
 
     async def send_message(self, prompt: str) -> str:
         """发送消息并等待响应"""
+        t_start = time.time()
         await self._ensure_selectors()
 
         print(f"→ 发送消息: {prompt[:50]}{'...' if len(prompt) > 50 else ''}")
@@ -59,6 +61,8 @@ class QwenChat:
 
         # 短暂等待确保输入完成
         await asyncio.sleep(0.5)
+        if DEBUG:
+            print(f"  [TIMING] 输入消息: {time.time() - t_start:.1f}s")
 
         # 发送消息 - 优先尝试点击发送按钮
         sent = False
@@ -102,40 +106,59 @@ class QwenChat:
             print("  [DEBUG] 尝试使用回车发送")
             await self.page.keyboard.press("Enter")
 
+        t_sent = time.time()
+        if DEBUG:
+            print(f"  [TIMING] 发送消息: {t_sent - t_start:.1f}s")
         print("→ 等待 AI 响应...")
 
         # 等待响应完成
         response = await self._wait_for_response_complete()
+        if DEBUG:
+            print(f"  [TIMING] 等待响应: {time.time() - t_sent:.1f}s")
+            print(f"  [TIMING] send_message 总耗时: {time.time() - t_start:.1f}s")
 
         return response
 
     async def _wait_for_response_complete(self) -> str:
-        """等待响应完成并返回内容"""
+        """等待响应完成并返回内容
+
+        使用即时 DOM 查询检测生成状态，避免 wait_for_selector 超时带来的延迟。
+        AI 完成后预计 ~0.6 秒内返回（2 次稳定检查 × 0.3 秒间隔）。
+        """
+        t_start = time.time()
+        t_first_content = None
         last_content = ""
         stable_count = 0
-        max_stable = 3  # 内容稳定1.5秒（每0.5秒检查）
-        timeout_counter = 0
-        max_timeout = TIMEOUT["response_wait"] // 500  # 转换为检查次数
+        max_stable = 2  # 内容稳定 0.6 秒即认为完成（每 0.3 秒检查）
+        check_interval = 0.3
+        timeout_ms = TIMEOUT["response_wait"]
+        max_checks = int(timeout_ms / (check_interval * 1000))
 
-        while timeout_counter < max_timeout:
-            # 检查是否有停止按钮或加载指示器
+        for i in range(max_checks):
+            # 检查是否有停止按钮或加载指示器（即时查询，不等待）
             is_generating = await self._is_generating()
 
             # 获取最新回复内容
             current_content = await self._get_latest_response()
 
             if current_content:
+                if t_first_content is None:
+                    t_first_content = time.time()
+                    if DEBUG:
+                        print(f"  [TIMING] 首次检测到内容: {t_first_content - t_start:.1f}s")
+
                 if current_content == last_content and not is_generating:
                     stable_count += 1
                     if stable_count >= max_stable:
+                        if DEBUG:
+                            print(f"  [TIMING] 内容稳定确认: {time.time() - t_start:.1f}s (检查 {i+1} 轮)")
                         print("✓ 响应完成")
                         return current_content
                 else:
                     stable_count = 0
                     last_content = current_content
 
-            await asyncio.sleep(0.5)
-            timeout_counter += 1
+            await asyncio.sleep(check_interval)
 
         # 超时但有内容，返回当前内容
         if last_content:
@@ -145,24 +168,28 @@ class QwenChat:
         raise Exception("获取响应超时")
 
     async def _is_generating(self) -> bool:
-        """检查是否正在生成响应"""
+        """检查是否正在生成响应
+
+        使用即时 query_selector 代替 wait_for_selector，
+        避免每次调用耗费 ~1 秒的超时等待。
+        """
         # 检查停止按钮
-        stop_btn, _ = await find_element(
-            self.page,
-            SELECTORS["stop_button"],
-            timeout=500
-        )
-        if stop_btn:
-            return True
+        for selector in SELECTORS["stop_button"]:
+            try:
+                el = await self.page.query_selector(selector)
+                if el and await el.is_visible():
+                    return True
+            except Exception:
+                continue
 
         # 检查加载指示器
-        loading, _ = await find_element(
-            self.page,
-            SELECTORS["loading"],
-            timeout=500
-        )
-        if loading:
-            return True
+        for selector in SELECTORS["loading"]:
+            try:
+                el = await self.page.query_selector(selector)
+                if el and await el.is_visible():
+                    return True
+            except Exception:
+                continue
 
         return False
 
@@ -197,6 +224,7 @@ class QwenChat:
             return False
 
         print(f"→ 上传图片: {image_path}")
+        t_upload_start = time.time()
 
         max_retries = 3
         for attempt in range(max_retries):
@@ -217,13 +245,10 @@ class QwenChat:
                 if DEBUG:
                     print(f"  [DEBUG] 点击附件按钮: {selector}")
 
-                # 等待菜单展开
-                await asyncio.sleep(0.8)
-
-                # 验证下拉菜单是否出现
+                # 验证下拉菜单是否出现（wait_for_selector 自带等待）
                 menu_item = None
                 try:
-                    menu_item = await self.page.wait_for_selector('text=上传图片', timeout=2000)
+                    menu_item = await self.page.wait_for_selector('text=上传图片', timeout=3000)
                     if menu_item and not await menu_item.is_visible():
                         menu_item = None
                 except Exception:
@@ -276,6 +301,8 @@ class QwenChat:
                     debug=DEBUG
                 )
                 if preview:
+                    if DEBUG:
+                        print(f"  [TIMING] 图片上传: {time.time() - t_upload_start:.1f}s")
                     print("  ✓ 图片上传完成")
                     return True
                 else:
@@ -308,8 +335,12 @@ class QwenChat:
         Returns:
             AI 回复内容
         """
+        t_total = time.time()
+
         # 先开启新对话，确保在干净的聊天页面（避免已有对话影响元素匹配）
         await self.new_chat()
+        if DEBUG:
+            print(f"  [TIMING] new_chat: {time.time() - t_total:.1f}s")
 
         # 上传图片
         if not await self.upload_image(image_path):
@@ -319,7 +350,10 @@ class QwenChat:
         await asyncio.sleep(0.5)
 
         # 发送消息
-        return await self.send_message(prompt)
+        response = await self.send_message(prompt)
+        if DEBUG:
+            print(f"  [TIMING] send_message_with_image 总耗时: {time.time() - t_total:.1f}s")
+        return response
 
     async def new_chat(self) -> None:
         """开启新对话（如果页面支持）"""
@@ -338,12 +372,13 @@ class QwenChat:
         btn, _ = await find_element(self.page, new_chat_selectors, timeout=3000)
         if btn:
             await btn.click()
-            await asyncio.sleep(1)
-            print("✓ 已开启新对话")
         else:
             # 直接导航到聊天首页，确保获得干净的对话页面
             from .config import QWEN_URL, TIMEOUT
             print("  [INFO] 未找到新对话按钮，导航到聊天首页...")
             await self.page.goto(QWEN_URL, wait_until="domcontentloaded", timeout=TIMEOUT["navigation"])
             await self.page.wait_for_load_state("networkidle", timeout=30000)
-            await asyncio.sleep(1)
+
+        # 等待输入框出现，确认页面已就绪（而非固定 sleep）
+        await find_element(self.page, SELECTORS["logged_in_indicator"], timeout=5000)
+        print("✓ 已开启新对话")
