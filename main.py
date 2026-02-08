@@ -22,6 +22,7 @@ Usage:
 import argparse
 import asyncio
 import sys
+import time
 
 from qwen_client import QwenBrowser, QwenChat, DEBUG
 from qwen_client.utils import print_banner
@@ -48,10 +49,15 @@ async def login_only():
 
 async def single_query(prompt: str, image_path: str = None):
     """单次提问"""
+    t_total = time.time()
     browser = QwenBrowser()
     try:
+        t0 = time.time()
         await browser.launch()
+        t_launch = time.time()
+
         logged_in = await browser.load_cookies_and_goto()
+        t_load = time.time()
 
         if not logged_in:
             if DEBUG:
@@ -63,16 +69,25 @@ async def single_query(prompt: str, image_path: str = None):
         chat = QwenChat(browser.page)
 
         # 根据是否有图片选择不同的发送方式
+        t_query = time.time()
         if image_path:
             response = await chat.send_message_with_image(prompt, image_path)
         else:
             response = await chat.send_message(prompt)
+        t_done = time.time()
 
         print("\n" + "=" * 50)
         print("AI 回复:")
         print("=" * 50)
         print(response)
         print("=" * 50)
+
+        if DEBUG:
+            print(f"\n  [TIMING] === 全流程耗时 ===")
+            print(f"  [TIMING]   浏览器启动:  {t_launch - t0:.1f}s")
+            print(f"  [TIMING]   加载页面+登录: {t_load - t_launch:.1f}s")
+            print(f"  [TIMING]   查询(含上传): {t_done - t_query:.1f}s")
+            print(f"  [TIMING]   全流程总计:   {t_done - t_total:.1f}s")
 
     finally:
         await browser.close()
