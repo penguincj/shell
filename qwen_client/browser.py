@@ -102,13 +102,10 @@ class QwenBrowser:
             t_nav = time.time()
             print("→ 正在加载页面...")
             await self.page.goto(QWEN_URL, wait_until="domcontentloaded", timeout=TIMEOUT["navigation"])
-            await self.page.wait_for_load_state("networkidle", timeout=30000)
 
-            # 调试：打印页面加载后的 cookies
+            # 不等 networkidle（SPA 持续有请求，白等），直接等关键 UI 元素出现
             if DEBUG:
-                current_cookies = await self.context.cookies()
-                print(f"  [DEBUG] 页面加载后有 {len(current_cookies)} 个 cookies")
-                print(f"  [TIMING] 页面导航: {time.time() - t_nav:.1f}s")
+                print(f"  [TIMING] 页面导航(domcontentloaded): {time.time() - t_nav:.1f}s")
 
             t_login_check = time.time()
             if await self._check_logged_in():
@@ -131,12 +128,6 @@ class QwenBrowser:
             await self.context.add_cookies(cookies)
             print("→ 正在加载页面...")
             await self.page.goto(QWEN_URL, wait_until="domcontentloaded", timeout=TIMEOUT["navigation"])
-            await self.page.wait_for_load_state("networkidle", timeout=30000)
-
-            # 调试：打印页面加载后的 cookies
-            if DEBUG:
-                current_cookies = await self.context.cookies()
-                print(f"  [DEBUG] 页面加载后有 {len(current_cookies)} 个 cookies")
 
             if await self._check_logged_in():
                 self._is_logged_in = True
@@ -148,37 +139,41 @@ class QwenBrowser:
 
         print("→ 未找到登录状态，需要登录")
         await self.page.goto(QWEN_URL, wait_until="domcontentloaded", timeout=TIMEOUT["navigation"])
-        await self.page.wait_for_load_state("networkidle", timeout=30000)
         return False
 
     async def _check_logged_in(self) -> bool:
-        """检查是否已登录"""
+        """检查是否已登录
+
+        优先检查正向指标（已登录元素），已登录时快速返回。
+        只有找不到正向指标时，才检查负向指标（"立即登录"按钮）。
+        """
         try:
             if DEBUG:
                 print("→ 检查登录状态...")
 
-            # 先检查是否有"立即登录"按钮（未登录标识）
+            # 先检查正向指标（已登录才有的元素）—— 已登录时快速返回
+            element, selector = await find_element(
+                self.page,
+                SELECTORS["logged_in_indicator"],
+                timeout=10000,
+                debug=DEBUG
+            )
+            if element:
+                if DEBUG:
+                    print(f"  ✓ 检测到登录元素: {selector}")
+                return True
+
+            # 正向指标没找到，检查是否有"立即登录"按钮
             not_logged_in, selector = await find_element(
                 self.page,
                 SELECTORS["not_logged_in_indicator"],
                 timeout=3000,
                 debug=False
             )
-            if not_logged_in:
-                if DEBUG:
-                    print(f"  ✗ 检测到未登录标识: {selector}")
-                return False
+            if not_logged_in and DEBUG:
+                print(f"  ✗ 检测到未登录标识: {selector}")
 
-            # 再检查是否有登录后才出现的元素
-            element, selector = await find_element(
-                self.page,
-                SELECTORS["logged_in_indicator"],
-                timeout=5000,
-                debug=DEBUG
-            )
-            if element and DEBUG:
-                print(f"  ✓ 检测到登录元素: {selector}")
-            return element is not None
+            return False
         except Exception as e:
             if DEBUG:
                 print(f"  ✗ 检查登录状态异常: {e}")

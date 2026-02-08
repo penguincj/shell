@@ -265,23 +265,6 @@ class QwenChat:
                     await asyncio.sleep(0.5)
                     continue
 
-                # 调试：打印页面上包含"上传"文字的元素
-                if DEBUG and attempt == 0:
-                    print("  [DEBUG] 查找包含'上传'的元素...")
-                    try:
-                        elements = await self.page.query_selector_all('*')
-                        for el in elements:
-                            try:
-                                text = await el.inner_text()
-                                if '上传' in text and len(text) < 20:
-                                    tag = await el.evaluate('el => el.tagName')
-                                    class_name = await el.evaluate('el => el.className')
-                                    print(f"    - <{tag}> class=\"{class_name}\" text=\"{text}\"")
-                            except:
-                                pass
-                    except Exception as e:
-                        print(f"  [DEBUG] 查找元素失败: {e}")
-
                 # 2. 使用 file chooser 拦截文件选择，直接点击已找到的菜单项
                 async with self.page.expect_file_chooser(timeout=10000) as fc_info:
                     await menu_item.click()
