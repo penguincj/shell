@@ -43,9 +43,6 @@ class QwenChat:
 
         print(f"→ 发送消息: {prompt[:50]}{'...' if len(prompt) > 50 else ''}")
 
-        # 获取发送前的消息数量
-        messages_before = await self._get_message_count()
-
         # 输入消息
         input_box = await self.page.wait_for_selector(
             self._input_selector,
@@ -107,33 +104,10 @@ class QwenChat:
 
         print("→ 等待 AI 响应...")
 
-        # 等待新消息出现
-        await self._wait_for_new_message(messages_before)
-
         # 等待响应完成
         response = await self._wait_for_response_complete()
 
         return response
-
-    async def _get_message_count(self) -> int:
-        """获取当前消息数量"""
-        messages, _ = await find_all_elements(
-            self.page,
-            SELECTORS["assistant_message"]
-        )
-        return len(messages)
-
-    async def _wait_for_new_message(self, count_before: int, max_wait: int = 5) -> None:
-        """等待新消息出现"""
-        for _ in range(max_wait * 2):  # 每0.5秒检查一次
-            messages, _ = await find_all_elements(
-                self.page,
-                SELECTORS["assistant_message"]
-            )
-            if len(messages) > count_before:
-                return
-            await asyncio.sleep(0.5)
-        print("  [WARN] 等待新消息超时，继续尝试获取响应...")
 
     async def _wait_for_response_complete(self) -> str:
         """等待响应完成并返回内容"""
