@@ -1,4 +1,6 @@
 """API 路由"""
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 
 from qwen_client.manager import BrowserManager
@@ -7,7 +9,7 @@ from .models import ChatRequest, ChatResponse, HealthResponse, RestartResponse
 router = APIRouter(prefix="/v1")
 
 # 全局 BrowserManager 实例，由 app.py lifespan 注入
-manager: BrowserManager | None = None
+manager: Optional[BrowserManager] = None
 
 
 def set_manager(m: BrowserManager) -> None:

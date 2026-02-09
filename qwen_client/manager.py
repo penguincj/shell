@@ -1,6 +1,7 @@
 """浏览器生命周期管理 + 请求串行化"""
 import asyncio
 import time
+from typing import Optional
 
 from .browser import QwenBrowser
 from .chat import QwenChat
@@ -18,8 +19,8 @@ class BrowserManager:
     NEW_CHAT_INTERVAL = 50  # 每 50 次请求清理一次对话
 
     def __init__(self):
-        self._browser: QwenBrowser | None = None
-        self._chat: QwenChat | None = None
+        self._browser: Optional[QwenBrowser] = None
+        self._chat: Optional[QwenChat] = None
         self._lock = asyncio.Lock()
         self._request_count = 0
         self._started = False
@@ -68,7 +69,7 @@ class BrowserManager:
         except Exception:
             return False
 
-    async def chat(self, prompt: str, image_path: str | None = None) -> str:
+    async def chat(self, prompt: str, image_path: Optional[str] = None) -> str:
         """发送消息并返回 AI 回复
 
         Args:

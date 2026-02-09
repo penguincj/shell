@@ -1,10 +1,12 @@
 """请求/响应数据模型"""
+from typing import Optional
+
 from pydantic import BaseModel
 
 
 class ChatRequest(BaseModel):
     prompt: str
-    image_path: str | None = None
+    image_path: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
