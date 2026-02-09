@@ -16,8 +16,8 @@ class BaiduChat:
         self._input_selector = None
         self._send_selector = None
 
-    async def _ensure_selectors(self) -> None:
-        """确保已找到输入框和发送按钮的选择器"""
+    async def _ensure_input_selector(self) -> None:
+        """确保已找到输入框选择器（发送按钮延迟到发送时再找）"""
         if not self._input_selector:
             _, self._input_selector = await find_element(
                 self.page,
@@ -28,20 +28,10 @@ class BaiduChat:
                 raise Exception("找不到输入框，请检查页面是否加载完成或更新选择器配置")
             print(f"  [DEBUG] 输入框选择器: {self._input_selector}")
 
-        if not self._send_selector:
-            _, self._send_selector = await find_element(
-                self.page,
-                SELECTORS["send_button"],
-                timeout=TIMEOUT["element"]
-            )
-            # 发送按钮可能不存在（有些是按回车发送）
-            if self._send_selector:
-                print(f"  [DEBUG] 发送按钮选择器: {self._send_selector}")
-
     async def send_message(self, prompt: str) -> str:
         """发送消息并等待响应"""
         t_start = time.time()
-        await self._ensure_selectors()
+        await self._ensure_input_selector()
 
         print(f"→ 发送消息: {prompt[:50]}{'...' if len(prompt) > 50 else ''}")
 
@@ -72,39 +62,30 @@ class BaiduChat:
         if pre_content:
             print(f"  [DEBUG] 发送前页面已有内容: {pre_content[:80]!r}")
 
-        # 发送消息 - 优先尝试点击发送按钮
+        # 发送消息 - 输入完成后再查找发送按钮（短超时，有缓存）
         sent = False
-        if self._send_selector:
-            try:
-                send_btn = await self.page.wait_for_selector(
-                    self._send_selector,
-                    timeout=3000
-                )
-                if send_btn and await send_btn.is_visible():
-                    await send_btn.click()
-                    sent = True
-                    print("  [DEBUG] 点击发送按钮")
-            except Exception as e:
-                print(f"  [DEBUG] 发送按钮点击失败: {e}")
+        all_send_selectors = SELECTORS["send_button"] + [
+            '[class*="sendBtn"]',
+            '[class*="send-btn"]',
+            '[class*="submit"]',
+            'button:has(svg[class*="arrow"])',
+        ]
 
-        # 如果没有发送按钮或点击失败，尝试更多选择器
-        if not sent:
-            fallback_selectors = [
-                '[class*="sendBtn"]',
-                '[class*="send-btn"]',
-                '[class*="submit"]',
-                'button:has(svg[class*="arrow"])',
-            ]
-            for sel in fallback_selectors:
-                try:
-                    btn = await self.page.wait_for_selector(sel, timeout=1000)
-                    if btn and await btn.is_visible():
-                        await btn.click()
-                        sent = True
-                        print(f"  [DEBUG] 使用备选按钮发送: {sel}")
-                        break
-                except Exception:
-                    continue
+        if self._send_selector:
+            # 已缓存，直接用
+            all_send_selectors = [self._send_selector]
+
+        for sel in all_send_selectors:
+            try:
+                btn = await self.page.wait_for_selector(sel, timeout=500)
+                if btn and await btn.is_visible():
+                    await btn.click()
+                    sent = True
+                    self._send_selector = sel  # 缓存命中的选择器
+                    print(f"  [DEBUG] 点击发送按钮: {sel}")
+                    break
+            except Exception:
+                continue
 
         # 最后尝试回车发送
         if not sent:
