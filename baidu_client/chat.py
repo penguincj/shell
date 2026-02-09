@@ -16,44 +16,67 @@ class BaiduChat:
         self._input_selector = None
         self._send_selector = None
 
-    async def _ensure_input_selector(self) -> None:
-        """确保已找到输入框选择器（发送按钮延迟到发送时再找）"""
-        if not self._input_selector:
-            _, self._input_selector = await find_element(
-                self.page,
-                SELECTORS["input_box"],
-                timeout=TIMEOUT["element"]
-            )
-            if not self._input_selector:
-                raise Exception("找不到输入框，请检查页面是否加载完成或更新选择器配置")
-            print(f"  [DEBUG] 输入框选择器: {self._input_selector}")
+    async def _quick_find(self, selectors: list[str]) -> tuple:
+        """快速查找元素：先即时扫描全部选择器（0ms），找不到再短暂等待
+
+        Returns:
+            (element, selector) 或 (None, None)
+        """
+        # 第一轮：即时查询，不等待
+        for sel in selectors:
+            try:
+                el = await self.page.query_selector(sel)
+                if el:
+                    return el, sel
+            except Exception:
+                continue
+
+        # 第二轮：短暂等待（元素可能还在渲染）
+        for sel in selectors:
+            try:
+                el = await self.page.wait_for_selector(sel, timeout=500)
+                if el:
+                    return el, sel
+            except Exception:
+                continue
+
+        return None, None
 
     async def send_message(self, prompt: str) -> str:
         """发送消息并等待响应"""
         t_start = time.time()
-        await self._ensure_input_selector()
 
         print(f"→ 发送消息: {prompt[:50]}{'...' if len(prompt) > 50 else ''}")
 
-        # 输入消息
-        input_box = await self.page.wait_for_selector(
-            self._input_selector,
-            timeout=TIMEOUT["element"]
-        )
+        # 查找输入框（有缓存直接用，否则快速扫描）
+        input_box = None
+        if self._input_selector:
+            input_box = await self.page.query_selector(self._input_selector)
 
-        # 清空并输入新内容
+        if not input_box:
+            input_box, self._input_selector = await self._quick_find(SELECTORS["input_box"])
+
+        if not input_box:
+            # 最后兜底：用 wait_for_selector 等页面加载
+            input_box, self._input_selector = await find_element(
+                self.page, SELECTORS["input_box"], timeout=TIMEOUT["element"]
+            )
+
+        if not input_box:
+            raise Exception("找不到输入框，请检查页面是否加载完成或更新选择器配置")
+
+        if DEBUG:
+            print(f"  [DEBUG] 输入框选择器: {self._input_selector}")
+
+        # 清空并输入 — fill() 最快，直接设置 value
         await input_box.click()
-
-        # 百度使用 textarea，尝试 fill，失败则 fallback 到 keyboard.type
         try:
             await input_box.fill(prompt)
         except Exception:
             await self.page.keyboard.press("Control+a")
             await self.page.keyboard.press("Backspace")
-            await self.page.keyboard.type(prompt, delay=50)
+            await self.page.keyboard.type(prompt, delay=0)
 
-        # 短暂等待确保输入完成
-        await asyncio.sleep(0.5)
         if DEBUG:
             print(f"  [TIMING] 输入消息: {time.time() - t_start:.1f}s")
 
@@ -62,32 +85,36 @@ class BaiduChat:
         if pre_content:
             print(f"  [DEBUG] 发送前页面已有内容: {pre_content[:80]!r}")
 
-        # 发送消息 - 输入完成后再查找发送按钮（短超时，有缓存）
+        # 查找并点击发送按钮（缓存 > 即时扫描 > 回车兜底）
         sent = False
         all_send_selectors = SELECTORS["send_button"] + [
-            '[class*="sendBtn"]',
-            '[class*="send-btn"]',
             '[class*="submit"]',
             'button:has(svg[class*="arrow"])',
         ]
 
         if self._send_selector:
-            # 已缓存，直接用
-            all_send_selectors = [self._send_selector]
-
-        for sel in all_send_selectors:
+            # 已缓存，即时查询
             try:
-                btn = await self.page.wait_for_selector(sel, timeout=500)
+                btn = await self.page.query_selector(self._send_selector)
                 if btn and await btn.is_visible():
                     await btn.click()
                     sent = True
-                    self._send_selector = sel  # 缓存命中的选择器
-                    print(f"  [DEBUG] 点击发送按钮: {sel}")
-                    break
+                    print(f"  [DEBUG] 点击发送按钮(缓存): {self._send_selector}")
             except Exception:
-                continue
+                self._send_selector = None
 
-        # 最后尝试回车发送
+        if not sent:
+            btn, sel = await self._quick_find(all_send_selectors)
+            if btn:
+                try:
+                    if await btn.is_visible():
+                        await btn.click()
+                        sent = True
+                        self._send_selector = sel
+                        print(f"  [DEBUG] 点击发送按钮: {sel}")
+                except Exception:
+                    pass
+
         if not sent:
             print("  [DEBUG] 尝试使用回车发送")
             await self.page.keyboard.press("Enter")
