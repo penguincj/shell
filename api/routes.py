@@ -19,12 +19,15 @@ def set_manager(m: BrowserManager) -> None:
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
+    print(f"[API] 收到 /v1/chat 请求: prompt={req.prompt[:50]!r}, image_path={req.image_path}", flush=True)
     if not manager or not manager.is_ready:
         raise HTTPException(status_code=503, detail="浏览器未就绪")
     try:
         response = await manager.chat(req.prompt, req.image_path)
+        print(f"[API] /v1/chat 完成, 响应长度={len(response)}", flush=True)
         return ChatResponse(response=response, request_count=manager.request_count)
     except Exception as e:
+        print(f"[API] /v1/chat 异常: {e}", flush=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

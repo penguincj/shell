@@ -62,9 +62,9 @@ class BrowserManager:
         await self.startup()
 
     async def _health_check(self) -> bool:
-        """探活：尝试获取页面 title"""
+        """探活：尝试获取页面 title（5 秒超时）"""
         try:
-            await self._browser.page.title()
+            await asyncio.wait_for(self._browser.page.title(), timeout=5)
             return True
         except Exception:
             return False
