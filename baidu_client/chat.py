@@ -128,8 +128,9 @@ class BaiduChat:
     async def _wait_for_response_complete(self, pre_content: str = "") -> str:
         """等待响应完成并返回内容
 
-        使用即时 DOM 查询检测生成状态，避免 wait_for_selector 超时带来的延迟。
-        AI 完成后预计 ~0.6 秒内返回（2 次稳定检查 × 0.3 秒间隔）。
+        双重稳定检测：
+        - 快速路径：内容稳定 + 未在生成 → 0.6秒内返回
+        - 兜底路径：内容稳定3秒（即使生成指示器误报）→ 仍视为完成
 
         Args:
             pre_content: 发送前页面已有的内容，用于跳过旧内容
@@ -137,8 +138,10 @@ class BaiduChat:
         t_start = time.time()
         t_first_content = None
         last_content = ""
-        stable_count = 0
-        max_stable = 2
+        stable_count = 0        # 快速路径计数（内容稳定 + 非生成状态）
+        stable_count_slow = 0   # 兜底路径计数（内容稳定，忽略生成状态）
+        max_stable = 2          # 快速路径：2次 × 0.3s = 0.6s
+        max_stable_slow = 10    # 兜底路径：10次 × 0.3s = 3s
         check_interval = 0.3
         timeout_ms = TIMEOUT["response_wait"]
         max_checks = int(timeout_ms / (check_interval * 1000))
@@ -162,15 +165,27 @@ class BaiduChat:
                         print(f"  [TIMING] 首次检测到新内容: {t_first_content - t_start:.1f}s")
                     print(f"  [DEBUG] 新内容预览: {current_content[:80]!r}")
 
-                if current_content == last_content and not is_generating:
-                    stable_count += 1
-                    if stable_count >= max_stable:
-                        if DEBUG:
-                            print(f"  [TIMING] 内容稳定确认: {time.time() - t_start:.1f}s (检查 {i+1} 轮)")
-                        print("✓ 响应完成")
-                        return current_content
+                if current_content == last_content:
+                    if not is_generating:
+                        # 快速路径：内容稳定 + 无生成指示器
+                        stable_count += 1
+                        if stable_count >= max_stable:
+                            if DEBUG:
+                                print(f"  [TIMING] 内容稳定确认: {time.time() - t_start:.1f}s (检查 {i+1} 轮)")
+                            print("✓ 响应完成")
+                            return current_content
+                    else:
+                        # 兜底路径：内容稳定但生成指示器仍在（可能是误报）
+                        stable_count_slow += 1
+                        if stable_count_slow >= max_stable_slow:
+                            if DEBUG:
+                                print(f"  [TIMING] 内容稳定确认(兜底): {time.time() - t_start:.1f}s (检查 {i+1} 轮)")
+                                print(f"  [DEBUG] 生成指示器仍存在但内容已稳定3秒，视为完成")
+                            print("✓ 响应完成")
+                            return current_content
                 else:
                     stable_count = 0
+                    stable_count_slow = 0
                     last_content = current_content
 
             await asyncio.sleep(check_interval)
