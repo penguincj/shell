@@ -141,7 +141,7 @@ class BaiduChat:
         stable_count = 0        # 快速路径计数（内容稳定 + 非生成状态）
         stable_count_slow = 0   # 兜底路径计数（内容稳定，忽略生成状态）
         max_stable = 2          # 快速路径：2次 × 0.3s = 0.6s
-        max_stable_slow = 10    # 兜底路径：10次 × 0.3s = 3s
+        max_stable_slow = 3     # 兜底路径：3次 × 0.3s ≈ 1s
         check_interval = 0.3
         timeout_ms = TIMEOUT["response_wait"]
         max_checks = int(timeout_ms / (check_interval * 1000))
