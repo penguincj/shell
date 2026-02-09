@@ -1,4 +1,5 @@
 """API 路由"""
+import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -21,10 +22,13 @@ def set_manager(m: BrowserManager) -> None:
 async def chat(req: ChatRequest):
     if not manager or not manager.is_ready:
         raise HTTPException(status_code=503, detail="浏览器未就绪")
+    t_start = time.time()
     try:
         response = await manager.chat(req.prompt, req.image_path)
+        print(f"  [TIMING] /v1/chat 端到端总耗时: {time.time() - t_start:.1f}s")
         return ChatResponse(response=response, request_count=manager.request_count)
     except Exception as e:
+        print(f"  [TIMING] /v1/chat 异常, 耗时: {time.time() - t_start:.1f}s")
         raise HTTPException(status_code=500, detail=str(e))
 
 
