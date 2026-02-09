@@ -133,3 +133,9 @@ BROWSER_CONFIG = {
         "Chrome/120.0.0.0 Safari/537.36"
     ),
 }
+
+# API 服务配置
+API_CONFIG = {
+    "host": os.getenv("API_HOST", "0.0.0.0"),
+    "port": int(os.getenv("API_PORT", "8000")),
+}

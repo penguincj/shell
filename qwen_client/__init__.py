@@ -2,6 +2,7 @@
 from .browser import QwenBrowser
 from .chat import QwenChat
 from .config import DEBUG, QWEN_URL
+from .manager import BrowserManager
 
-__all__ = ['QwenBrowser', 'QwenChat', 'DEBUG', 'QWEN_URL']
+__all__ = ['QwenBrowser', 'QwenChat', 'BrowserManager', 'DEBUG', 'QWEN_URL']
 __version__ = '0.1.0'
