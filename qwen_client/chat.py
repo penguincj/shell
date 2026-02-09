@@ -109,21 +109,30 @@ class QwenChat:
         t_sent = time.time()
         if DEBUG:
             print(f"  [TIMING] 发送消息: {t_sent - t_start:.1f}s")
+
+        # 发送前记录页面已有内容，用于区分新旧响应
+        pre_content = await self._get_latest_response()
+        if pre_content:
+            print(f"  [DEBUG] 发送前页面已有内容: {pre_content[:80]!r}")
+
         print("→ 等待 AI 响应...")
 
-        # 等待响应完成
-        response = await self._wait_for_response_complete()
+        # 等待响应完成（跳过发送前已有的内容）
+        response = await self._wait_for_response_complete(pre_content)
         if DEBUG:
             print(f"  [TIMING] 等待响应: {time.time() - t_sent:.1f}s")
             print(f"  [TIMING] send_message 总耗时: {time.time() - t_start:.1f}s")
 
         return response
 
-    async def _wait_for_response_complete(self) -> str:
+    async def _wait_for_response_complete(self, pre_content: str = "") -> str:
         """等待响应完成并返回内容
 
         使用即时 DOM 查询检测生成状态，避免 wait_for_selector 超时带来的延迟。
         AI 完成后预计 ~0.6 秒内返回（2 次稳定检查 × 0.3 秒间隔）。
+
+        Args:
+            pre_content: 发送前页面已有的内容，用于跳过旧内容
         """
         t_start = time.time()
         t_first_content = None
@@ -141,11 +150,17 @@ class QwenChat:
             # 获取最新回复内容
             current_content = await self._get_latest_response()
 
+            # 跳过发送前已有的内容（页面残留的旧响应/UI文本）
+            if current_content and current_content == pre_content:
+                await asyncio.sleep(check_interval)
+                continue
+
             if current_content:
                 if t_first_content is None:
                     t_first_content = time.time()
                     if DEBUG:
-                        print(f"  [TIMING] 首次检测到内容: {t_first_content - t_start:.1f}s")
+                        print(f"  [TIMING] 首次检测到新内容: {t_first_content - t_start:.1f}s")
+                    print(f"  [DEBUG] 新内容预览: {current_content[:80]!r}")
 
                 if current_content == last_content and not is_generating:
                     stable_count += 1
