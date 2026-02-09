@@ -15,27 +15,48 @@ class BaiduChat:
         self.page = page
         self._input_selector = None
         self._send_selector = None
+        self._stop_selector = None       # 缓存首次命中的停止按钮选择器
+        self._loading_selector = None    # 缓存首次命中的加载指示器选择器
+        self._response_selector = None   # 缓存首次命中的回复消息选择器
 
-    async def _quick_find(self, selectors: list[str]) -> tuple:
+    async def _quick_find(self, selectors: list[str], label: str = "") -> tuple:
         """快速查找元素：先即时扫描全部选择器（0ms），找不到再短暂等待
+
+        Args:
+            selectors: 候选选择器列表
+            label: DEBUG 日志标签（如 "输入框"、"发送按钮"）
 
         Returns:
             (element, selector) 或 (None, None)
         """
+        if DEBUG and label:
+            print(f"  [DEBUG] === 扫描{label}选择器 ===")
+
         # 第一轮：即时查询，不等待
         for sel in selectors:
             try:
                 el = await self.page.query_selector(sel)
                 if el:
+                    if DEBUG:
+                        print(f"  [DEBUG]   ✓ {sel}")
                     return el, sel
-            except Exception:
+                else:
+                    if DEBUG:
+                        print(f"  [DEBUG]   ✗ {sel}")
+            except Exception as e:
+                if DEBUG:
+                    print(f"  [DEBUG]   ✗ {sel} (异常: {e})")
                 continue
 
         # 第二轮：短暂等待（元素可能还在渲染）
+        if DEBUG and label:
+            print(f"  [DEBUG]   即时扫描未命中，等待重试...")
         for sel in selectors:
             try:
                 el = await self.page.wait_for_selector(sel, timeout=500)
                 if el:
+                    if DEBUG:
+                        print(f"  [DEBUG]   ✓ (等待后) {sel}")
                     return el, sel
             except Exception:
                 continue
@@ -54,7 +75,7 @@ class BaiduChat:
             input_box = await self.page.query_selector(self._input_selector)
 
         if not input_box:
-            input_box, self._input_selector = await self._quick_find(SELECTORS["input_box"])
+            input_box, self._input_selector = await self._quick_find(SELECTORS["input_box"], "输入框")
 
         if not input_box:
             # 最后兜底：用 wait_for_selector 等页面加载
@@ -104,7 +125,7 @@ class BaiduChat:
                 self._send_selector = None
 
         if not sent:
-            btn, sel = await self._quick_find(all_send_selectors)
+            btn, sel = await self._quick_find(all_send_selectors, "发送按钮")
             if btn:
                 try:
                     if await btn.is_visible():
@@ -216,6 +237,9 @@ class BaiduChat:
             try:
                 el = await self.page.query_selector(selector)
                 if el and await el.is_visible():
+                    if self._stop_selector != selector and DEBUG:
+                        print(f"  [DEBUG] 停止按钮命中: {selector}")
+                        self._stop_selector = selector
                     return True
             except Exception:
                 continue
@@ -225,6 +249,9 @@ class BaiduChat:
             try:
                 el = await self.page.query_selector(selector)
                 if el and await el.is_visible():
+                    if self._loading_selector != selector and DEBUG:
+                        print(f"  [DEBUG] 加载指示器命中: {selector}")
+                        self._loading_selector = selector
                     return True
             except Exception:
                 continue
@@ -239,6 +266,9 @@ class BaiduChat:
         )
 
         if messages:
+            if self._response_selector != selector and DEBUG:
+                print(f"  [DEBUG] 回复消息选择器命中: {selector}")
+                self._response_selector = selector
             last_message = messages[-1]
             try:
                 content = await last_message.inner_text()
