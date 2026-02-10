@@ -125,34 +125,37 @@ class BaiduBrowser:
         """检查是否已登录
 
         百度未登录时右上角有蓝色"登录"按钮。
-        先检查正向指标（已登录才有的元素），已登录时快速返回。
-        只有找不到正向指标时，才检查负向指标（"登录"按钮）。
+        注意：输入框在未登录状态也可见（截图3-2），不能作为登录判据。
+        因此先检查"登录"按钮（负向指标），找到即未登录；
+        未找到再确认页面已加载（输入框可见），视为已登录。
         """
         try:
             if DEBUG:
                 print("→ 检查登录状态...")
 
-            # 先检查正向指标（已登录才有的元素）—— 已登录时快速返回
+            # 先检查负向指标（"登录"按钮）—— 未登录时快速返回
+            not_logged_in, selector = await find_element(
+                self.page,
+                SELECTORS["not_logged_in_indicator"],
+                timeout=5000,
+                debug=False
+            )
+            if not_logged_in:
+                if DEBUG:
+                    print(f"  ✗ 检测到未登录标识: {selector}")
+                return False
+
+            # "登录"按钮不存在，确认页面已加载（输入框可见）才视为已登录
             element, selector = await find_element(
                 self.page,
                 SELECTORS["logged_in_indicator"],
-                timeout=10000,
+                timeout=5000,
                 debug=DEBUG
             )
             if element:
                 if DEBUG:
-                    print(f"  ✓ 检测到登录元素: {selector}")
+                    print(f"  ✓ 页面已加载且无登录按钮: {selector}")
                 return True
-
-            # 正向指标没找到，检查是否有"登录"按钮
-            not_logged_in, selector = await find_element(
-                self.page,
-                SELECTORS["not_logged_in_indicator"],
-                timeout=3000,
-                debug=False
-            )
-            if not_logged_in and DEBUG:
-                print(f"  ✗ 检测到未登录标识: {selector}")
 
             return False
         except Exception as e:
