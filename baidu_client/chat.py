@@ -157,9 +157,10 @@ class BaiduChat:
     async def _wait_for_response_complete(self, pre_content: str = "") -> str:
         """等待响应完成并返回内容
 
-        双重稳定检测：
-        - 快速路径：内容稳定 + 未在生成 → 0.6秒内返回
-        - 兜底路径：内容稳定3秒（即使生成指示器误报）→ 仍视为完成
+        三阶段检测：
+        1. 等待首次出现新内容
+        2. 等待内容开始变化（跳过"理解问题"等思考阶段的静态文本）
+        3. 内容变化后稳定 → 视为完成
 
         Args:
             pre_content: 发送前页面已有的内容，用于跳过旧内容
@@ -167,10 +168,13 @@ class BaiduChat:
         t_start = time.time()
         t_first_content = None
         last_content = ""
-        stable_count = 0        # 快速路径计数（内容稳定 + 非生成状态）
-        stable_count_slow = 0   # 兜底路径计数（内容稳定，忽略生成状态）
-        max_stable = 2          # 快速路径：2次 × 0.3s = 0.6s
-        max_stable_slow = 3     # 兜底路径：3次 × 0.3s ≈ 1s
+        content_ever_changed = False   # 内容是否变化过（区分思考阶段 vs 真正生成）
+        stable_count = 0               # 快速路径（内容稳定 + 无生成指示器）
+        stable_count_slow = 0          # 兜底路径（内容稳定 + 生成指示器仍在）
+        no_change_count = 0            # 内容从未变化的连续计数（思考阶段兜底）
+        max_stable = 3                 # 快速路径：3次 × 0.3s = 0.9s
+        max_stable_slow = 5            # 兜底路径：5次 × 0.3s = 1.5s
+        max_no_change_fallback = 30    # 思考阶段兜底：30次 × 0.3s = 9s
         check_interval = 0.3
         timeout_ms = TIMEOUT["response_wait"]
         max_checks = int(timeout_ms / (check_interval * 1000))
@@ -190,32 +194,52 @@ class BaiduChat:
             if current_content:
                 if t_first_content is None:
                     t_first_content = time.time()
+                    last_content = current_content
                     if DEBUG:
                         print(f"  [TIMING] 首次检测到新内容: {t_first_content - t_start:.1f}s")
                     print(f"  [DEBUG] 新内容预览: {current_content[:80]!r}")
+                    await asyncio.sleep(check_interval)
+                    continue
 
-                if current_content == last_content:
-                    if not is_generating:
-                        # 快速路径：内容稳定 + 无生成指示器
-                        stable_count += 1
-                        if stable_count >= max_stable:
-                            if DEBUG:
-                                print(f"  [TIMING] 内容稳定确认: {time.time() - t_start:.1f}s (检查 {i+1} 轮)")
-                            print("✓ 响应完成")
-                            return current_content
-                    else:
-                        # 兜底路径：内容稳定但生成指示器仍在（可能是误报）
-                        stable_count_slow += 1
-                        if stable_count_slow >= max_stable_slow:
-                            if DEBUG:
-                                print(f"  [TIMING] 内容稳定确认(兜底): {time.time() - t_start:.1f}s (检查 {i+1} 轮)")
-                                print(f"  [DEBUG] 生成指示器仍存在但内容已稳定3秒，视为完成")
-                            print("✓ 响应完成")
-                            return current_content
-                else:
+                if current_content != last_content:
+                    # 内容在变化 → 正在生成
+                    if not content_ever_changed:
+                        content_ever_changed = True
+                        if DEBUG:
+                            print(f"  [DEBUG] 内容开始变化，进入生成阶段")
                     stable_count = 0
                     stable_count_slow = 0
+                    no_change_count = 0
                     last_content = current_content
+                else:
+                    # 内容未变化
+                    if content_ever_changed:
+                        # 内容曾经变化过，现在稳定了 → 正常的完成检测
+                        if not is_generating:
+                            stable_count += 1
+                            if stable_count >= max_stable:
+                                if DEBUG:
+                                    print(f"  [TIMING] 内容稳定确认: {time.time() - t_start:.1f}s (检查 {i+1} 轮)")
+                                print("✓ 响应完成")
+                                return current_content
+                        else:
+                            stable_count_slow += 1
+                            if stable_count_slow >= max_stable_slow:
+                                if DEBUG:
+                                    print(f"  [TIMING] 内容稳定确认(兜底): {time.time() - t_start:.1f}s")
+                                print("✓ 响应完成")
+                                return current_content
+                    else:
+                        # 内容从未变化（可能还在思考阶段，如"理解问题"）
+                        no_change_count += 1
+                        if DEBUG and no_change_count == 3:
+                            print(f"  [DEBUG] 内容未变化，等待思考阶段结束...")
+                        if not is_generating and no_change_count >= max_no_change_fallback:
+                            # 等了很久内容也没变，且无生成指示器 → 兜底返回
+                            if DEBUG:
+                                print(f"  [DEBUG] 内容从未变化({no_change_count * check_interval:.0f}s)，兜底返回")
+                            print("✓ 响应完成")
+                            return current_content
 
             await asyncio.sleep(check_interval)
 
@@ -373,13 +397,24 @@ class BaiduChat:
                 await file_chooser.set_files(image_path)
                 print("  → 图片已选择，等待上传...")
 
-                # 5. 等待图片预览出现（确认上传完成）
-                preview, _ = await find_element(
-                    self.page,
-                    SELECTORS["image_preview"],
-                    timeout=15000,
-                    debug=DEBUG
-                )
+                # 5. 等待图片预览出现（即时轮询，避免 wait_for_selector 逐个超时）
+                preview = None
+                t_preview = time.time()
+                while time.time() - t_preview < 10:
+                    for sel in SELECTORS["image_preview"]:
+                        try:
+                            el = await self.page.query_selector(sel)
+                            if el:
+                                preview = el
+                                if DEBUG:
+                                    print(f"  [DEBUG] 图片预览命中: {sel}")
+                                break
+                        except Exception:
+                            continue
+                    if preview:
+                        break
+                    await asyncio.sleep(0.2)
+
                 if preview:
                     if DEBUG:
                         print(f"  [TIMING] 图片上传: {time.time() - t_upload_start:.1f}s")

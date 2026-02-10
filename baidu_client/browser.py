@@ -124,40 +124,44 @@ class BaiduBrowser:
     async def _check_logged_in(self) -> bool:
         """检查是否已登录
 
-        百度未登录时右上角有蓝色"登录"按钮。
-        注意：输入框在未登录状态也可见（截图3-2），不能作为登录判据。
-        因此先检查"登录"按钮（负向指标），找到即未登录；
-        未找到再确认页面已加载（输入框可见），视为已登录。
+        策略：先等输入框出现（确认页面渲染完成，不论是否登录都有），
+        再用即时 query_selector 检查"登录"按钮。
+        避免对不存在的元素做 wait_for_selector 长时间等待。
         """
         try:
             if DEBUG:
                 print("→ 检查登录状态...")
 
-            # 先检查负向指标（"登录"按钮）—— 未登录时快速返回
-            not_logged_in, selector = await find_element(
-                self.page,
-                SELECTORS["not_logged_in_indicator"],
-                timeout=5000,
-                debug=False
-            )
-            if not_logged_in:
+            # 1. 等待页面渲染完成（输入框出现，不论登录与否都有）
+            page_ready = False
+            for sel in SELECTORS["logged_in_indicator"]:
+                try:
+                    el = await self.page.wait_for_selector(sel, timeout=1000)
+                    if el:
+                        page_ready = True
+                        break
+                except Exception:
+                    continue
+
+            if not page_ready:
                 if DEBUG:
-                    print(f"  ✗ 检测到未登录标识: {selector}")
+                    print("  ✗ 页面未渲染完成")
                 return False
 
-            # "登录"按钮不存在，确认页面已加载（输入框可见）才视为已登录
-            element, selector = await find_element(
-                self.page,
-                SELECTORS["logged_in_indicator"],
-                timeout=5000,
-                debug=DEBUG
-            )
-            if element:
-                if DEBUG:
-                    print(f"  ✓ 页面已加载且无登录按钮: {selector}")
-                return True
+            # 2. 页面已渲染，即时检查"登录"按钮（不等待）
+            for sel in SELECTORS["not_logged_in_indicator"]:
+                try:
+                    el = await self.page.query_selector(sel)
+                    if el and await el.is_visible():
+                        if DEBUG:
+                            print(f"  ✗ 检测到未登录标识: {sel}")
+                        return False
+                except Exception:
+                    continue
 
-            return False
+            if DEBUG:
+                print("  ✓ 页面已加载且无登录按钮")
+            return True
         except Exception as e:
             if DEBUG:
                 print(f"  ✗ 检查登录状态异常: {e}")

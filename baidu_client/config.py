@@ -104,10 +104,10 @@ SELECTORS = {
 
     # 图片预览（上传完成标识）
     "image_preview": [
+        'img[class*="upload"]',            # ← 实际命中的排第一
         '[class*="image-preview"]',
         '[class*="imagePreview"]',
         '[class*="preview"] img',
-        'img[class*="upload"]',
     ],
 }
 
