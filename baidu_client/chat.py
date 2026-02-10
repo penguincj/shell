@@ -65,8 +65,46 @@ class BaiduChat:
 
         return None, None
 
-    async def send_message(self, prompt: str) -> str:
-        """发送消息并等待响应"""
+    async def _check_message_sent(self, input_box, pre_content: str) -> bool:
+        """多策略检测消息是否已发送成功
+
+        策略1: 输入框被清空（JS evaluate 比 input_value() 更可靠）
+        策略2: AI 开始生成（停止按钮/加载指示器）
+        策略3: 新的回复内容出现（与发送前不同）
+        """
+        # 策略1: 输入框被清空
+        try:
+            val = await self.page.evaluate('(el) => el.value', input_box)
+            if val is not None and not val.strip():
+                if DEBUG:
+                    print("  [DEBUG] 检测到输入框已清空")
+                return True
+        except Exception:
+            pass
+
+        # 策略2: AI 开始生成
+        if await self._is_generating():
+            if DEBUG:
+                print("  [DEBUG] 检测到 AI 开始生成")
+            return True
+
+        # 策略3: 新回复内容出现
+        current = await self._get_latest_response()
+        if current and current != pre_content:
+            if DEBUG:
+                print("  [DEBUG] 检测到新回复内容出现")
+            return True
+
+        return False
+
+    async def send_message(self, prompt: str, *, _image_pending: bool = False) -> str:
+        """发送消息并等待响应
+
+        Args:
+            prompt: 要发送的文字
+            _image_pending: 内部参数，图片上传后调用时为 True，
+                            启用周期性回车重试（图片可能未就绪）
+        """
         t_start = time.time()
 
         print(f"→ 发送消息: {prompt[:50]}{'...' if len(prompt) > 50 else ''}")
@@ -108,36 +146,39 @@ class BaiduChat:
         if pre_content:
             print(f"  [DEBUG] 发送前页面已有内容: {pre_content[:80]!r}")
 
-        # 周期性回车发送（图片上传场景下，图片可能还没真正就绪，
-        # 单次点击/回车可能无反应，需要重试直到真正发出去）
+        # === 发送逻辑 ===
         sent = False
         await input_box.click()  # 确保焦点在输入框
-        for attempt in range(30):  # 最多 30 × 0.3s = 9s
-            await self.page.keyboard.press("Enter")
-            if DEBUG and attempt == 0:
-                print("  [DEBUG] 按回车发送")
-            await asyncio.sleep(0.3)
 
-            # 检测是否已发送：输入框被清空说明消息已发出
-            try:
-                val = await input_box.input_value()
-                if not val.strip():
+        if _image_pending:
+            # 图片场景：周期性回车，图片可能还没真正就绪
+            for attempt in range(20):  # 最多 20 × 0.3s = 6s
+                await self.page.keyboard.press("Enter")
+                if DEBUG and attempt == 0:
+                    print("  [DEBUG] 按回车发送（图片模式，周期重试）")
+                await asyncio.sleep(0.3)
+
+                if await self._check_message_sent(input_box, pre_content):
                     sent = True
                     if DEBUG and attempt > 0:
                         print(f"  [DEBUG] 第 {attempt + 1} 次回车后发送成功")
                     break
-            except Exception:
-                pass
+        else:
+            # 纯文本场景：按一次回车，短暂确认即可
+            await self.page.keyboard.press("Enter")
+            if DEBUG:
+                print("  [DEBUG] 按回车发送")
 
-            # 备选检测：AI 开始生成响应
-            if await self._is_generating():
-                sent = True
-                if DEBUG and attempt > 0:
-                    print(f"  [DEBUG] 第 {attempt + 1} 次回车后检测到生成中")
-                break
+            for i in range(5):  # 最多等 5 × 0.3s = 1.5s 确认
+                await asyncio.sleep(0.3)
+                if await self._check_message_sent(input_box, pre_content):
+                    sent = True
+                    break
 
         if not sent:
-            print("  [WARN] 周期性回车未检测到发送成功")
+            # 回车大概率已发送成功，检测机制可能不完善，继续等待响应
+            if DEBUG:
+                print("  [DEBUG] 未明确检测到发送，假定已发送继续等待响应")
 
         t_sent = time.time()
         if DEBUG:
@@ -437,8 +478,8 @@ class BaiduChat:
         # 短暂等待
         await asyncio.sleep(0.5)
 
-        # 发送消息
-        response = await self.send_message(prompt)
+        # 发送消息（图片模式：周期性回车重试，确保图片就绪后发出）
+        response = await self.send_message(prompt, _image_pending=True)
         if DEBUG:
             print(f"  [TIMING] send_message_with_image 总耗时: {time.time() - t_total:.1f}s")
         return response
