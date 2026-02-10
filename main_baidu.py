@@ -20,6 +20,7 @@ import asyncio
 import time
 
 from baidu_client import BaiduBrowser, BaiduChat, DEBUG
+from baidu_client.config import ARTIFACT_PROMPT
 from baidu_client.utils import print_banner
 
 
@@ -114,14 +115,17 @@ def main():
 
     if args.login:
         asyncio.run(login_only())
-    elif args.prompt:
-        asyncio.run(single_query(args.prompt, args.image))
+    elif args.prompt or args.image:
+        # 有图片时默认使用文物识别提示词，也可自定义
+        prompt = args.prompt or ARTIFACT_PROMPT
+        asyncio.run(single_query(prompt, args.image))
     else:
         parser.print_help()
         print("\n示例:")
         print("  DEBUG=1 python main_baidu.py --login           # 首次登录")
         print("  python main_baidu.py '你好'                    # 单次提问")
-        print("  python main_baidu.py '识别图片' --image a.png  # 带图片提问")
+        print("  python main_baidu.py --image a.png             # 文物识别（默认提示词）")
+        print("  python main_baidu.py '自定义问题' --image a.png  # 带图片自定义提问")
 
 
 if __name__ == "__main__":

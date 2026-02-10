@@ -111,6 +111,33 @@ SELECTORS = {
     ],
 }
 
+# 文物识别默认提示词（带图片时使用）
+ARTIFACT_PROMPT = """# Role
+文物识别专家。
+
+# Task
+提取图片中的文物信息，返回 JSON。
+
+# Rules
+1. **优先提取展签**：若有展签，严格按展签文字填写；若无展签，根据外观推断。
+2. **英文字段**：仅当展签上存在英文时填写，否则留空 ("")。
+3. **内容限制**：`description` 需精简概括（50字以内），不要写长篇故事。
+4. **格式**：仅返回 JSON，无Markdown标记。
+
+# JSON Structure & Definition
+{
+  "name": "文物名称(优先展签)",
+  "name_en": "英文名称(仅限展签有)",
+  "period": "年代(如:唐代, 若不确定填 null)",
+  "period_en": "英文年代(仅限展签有)",
+  "provenance": "出土地/来源(若不确定填 null)",
+  "provenance_en": "英文出处(仅限展签有)",
+  "description": "外观或简介(优先展签，若无则根据外观简述，限50字)",
+  "description_en": "英文简介(仅限展签有)",
+  "museum": "博物馆名(仅当有确切依据时填写, 否则 null)",
+  "category": "类别(如:青铜器, 瓷器, 书画等)"
+}"""
+
 # 浏览器配置
 BROWSER_CONFIG = {
     "headless": not DEBUG,
