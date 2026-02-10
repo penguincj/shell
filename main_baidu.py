@@ -17,11 +17,12 @@ Usage:
 """
 import argparse
 import asyncio
+import json
 import time
 
 from baidu_client import BaiduBrowser, BaiduChat, DEBUG
 from baidu_client.config import ARTIFACT_PROMPT
-from baidu_client.utils import print_banner
+from baidu_client.utils import print_banner, extract_json
 
 
 async def login_only():
@@ -72,11 +73,27 @@ async def single_query(prompt: str, image_path: str = None):
             response = await chat.send_message(prompt)
         t_done = time.time()
 
-        print("\n" + "=" * 50)
-        print("AI 回复:")
-        print("=" * 50)
-        print(response)
-        print("=" * 50)
+        # 图片识别场景：从回复中提取 JSON
+        if image_path:
+            data = extract_json(response)
+            if data:
+                print("\n" + "=" * 50)
+                print("文物识别结果 (JSON):")
+                print("=" * 50)
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+                print("=" * 50)
+            else:
+                print("\n" + "=" * 50)
+                print("[WARN] 未能从回复中提取 JSON，原始回复:")
+                print("=" * 50)
+                print(response)
+                print("=" * 50)
+        else:
+            print("\n" + "=" * 50)
+            print("AI 回复:")
+            print("=" * 50)
+            print(response)
+            print("=" * 50)
 
         if DEBUG:
             print(f"\n  [TIMING] === 全流程耗时 ===")
