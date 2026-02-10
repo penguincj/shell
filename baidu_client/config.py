@@ -86,14 +86,12 @@ SELECTORS = {
         '[class*="LoginBtn"]',
     ],
 
-    # 图片上传按钮 - 截图1可见: div.ci-tool-item.ci-weak-svg (20x20)
+    # 图片上传按钮 - 截图1: data-ci-show-ext 含 "button":"pic" 唯一定位
     "image_upload_button": [
-        'div.ci-tool-item.ci-weak-svg',               # ← 截图1 DevTools 确认
-        '[class*="ci-tool-item"][class*="ci-weak-svg"]',
-        '[class*="ci-tool-item"]',
+        'div[data-ci-show-ext*="pic"]',               # ← 截图1 DevTools 确认：button=pic
+        'div.ci-tool-item[data-ci-show-ext*="pic"]',
+        'div.ci-tool-item.ci-weak-svg',
         'button[aria-label*="图片"]',
-        '[class*="image-btn"]',
-        '[class*="imageBtn"]',
     ],
 
     # 上传本地图片菜单项
