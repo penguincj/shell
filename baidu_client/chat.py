@@ -277,6 +277,34 @@ class BaiduChat:
                 return ""
         return ""
 
+    async def _dump_input_area_elements(self) -> None:
+        """诊断：dump 输入区域附近所有可点击元素的标签、class、aria-label"""
+        print("  [DEBUG] === 诊断：输入区域附近的可点击元素 ===")
+        elements = await self.page.evaluate("""() => {
+            const results = [];
+            // 查找输入区域容器
+            const container = document.querySelector('[class*="chat-input"]')
+                || document.querySelector('textarea')?.parentElement?.parentElement?.parentElement;
+            if (!container) {
+                return ['未找到输入区域容器'];
+            }
+            // 遍历容器及其父元素中的所有可点击元素
+            const root = container.parentElement || container;
+            const clickables = root.querySelectorAll('button, a, [role="button"], svg, [onclick], div[class*="btn"], div[class*="icon"], span[class*="btn"], span[class*="icon"]');
+            clickables.forEach(el => {
+                const tag = el.tagName.toLowerCase();
+                const cls = el.className && typeof el.className === 'string' ? el.className : '';
+                const aria = el.getAttribute('aria-label') || '';
+                const title = el.getAttribute('title') || '';
+                const text = el.textContent?.trim()?.substring(0, 20) || '';
+                results.push(`<${tag}> class="${cls}" aria="${aria}" title="${title}" text="${text}"`);
+            });
+            return results;
+        }""")
+        for el in elements:
+            print(f"    {el}")
+        print("  [DEBUG] === 诊断结束 ===")
+
     async def upload_image(self, image_path: str) -> bool:
         """上传图片
 
@@ -306,6 +334,9 @@ class BaiduChat:
                     debug=DEBUG and attempt == 0
                 )
                 if not img_btn:
+                    # 诊断：dump 输入区域附近的可点击元素，帮助定位正确选择器
+                    if DEBUG:
+                        await self._dump_input_area_elements()
                     print("  ✗ 找不到图片上传按钮")
                     return False
 

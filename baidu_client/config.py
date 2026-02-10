@@ -86,12 +86,19 @@ SELECTORS = {
         '[class*="LoginBtn"]',
     ],
 
-    # 图片上传按钮 - 山景图标
+    # 图片上传按钮 - 输入框右侧山景图标（发送按钮左边第一个）
     "image_upload_button": [
+        '[class*="chat-input"] [class*="image"]',
+        '[class*="chat-input"] [class*="img"]',
+        '[class*="chat-input"] [class*="pic"]',
+        '[class*="chat-input"] [class*="photo"]',
+        '[class*="chat-input"] [class*="upload"]',
         'button[aria-label*="图片"]',
         '[class*="image-btn"]',
         '[class*="imageBtn"]',
         '[class*="img-upload"]',
+        '[class*="image"]',
+        '[class*="pic-btn"]',
     ],
 
     # 上传本地图片菜单项
