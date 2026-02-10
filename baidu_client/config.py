@@ -29,15 +29,16 @@ TIMEOUT = {
 SELECTORS = {
     # 输入框 - 百度使用 textarea
     "input_box": [
+        '[class*="chat-input"] textarea',  # ✓ 已验证命中
         'textarea[class*="input"]',
         'div[contenteditable="true"]',
-        '[class*="chat-input"] textarea',
         '[class*="ChatInput"] textarea',
         'textarea',
     ],
 
     # 发送按钮 - 紫色圆形箭头按钮
     "send_button": [
+        '[class*="submit"]',               # ✓ 已验证命中
         'button[class*="send"]',
         'button[class*="Send"]',
         'button[class*="submit"]',
@@ -47,7 +48,7 @@ SELECTORS = {
 
     # AI回复消息容器 - markdown 格式内容区
     "assistant_message": [
-        '[class*="markdown"]',
+        '[class*="markdown"]',             # ✓ 已验证命中
         '[class*="Markdown"]',
         '[class*="assistant"]',
         '[class*="bot-message"]',
@@ -64,17 +65,16 @@ SELECTORS = {
     ],
 
     # 加载指示器 - "图片解析中" 等生成中状态
+    # 注意：[class*="typing"] 在生成完成后仍命中（页面常驻元素），已移除
     "loading": [
         '[class*="loading"]',
-        '[class*="typing"]',
         '[class*="generating"]',
-        '[class*="thinking"]',
     ],
 
     # 登录成功标识 - 输入框可用说明已登录
     "logged_in_indicator": [
+        '[class*="chat-input"]',           # ✓ 已验证命中
         'textarea[class*="input"]',
-        '[class*="chat-input"]',
         '[class*="ChatInput"]',
     ],
 
