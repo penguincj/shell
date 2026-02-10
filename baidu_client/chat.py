@@ -11,6 +11,9 @@ from .utils import find_element, find_all_elements
 class BaiduChat:
     """百度文心助手聊天管理器"""
 
+    # 已知的加载/处理状态文本（非真正的 AI 回复，应跳过）
+    LOADING_PHRASES = ["图片解析中", "理解问题", "思考中", "分析中", "搜索中", "生成中"]
+
     def __init__(self, page: Page):
         self.page = page
         self._input_selector = None
@@ -154,13 +157,22 @@ class BaiduChat:
 
         return response
 
-    async def _wait_for_response_complete(self, pre_content: str = "") -> str:
-        """等待响应完成并返回内容
+    def _is_loading_text(self, text: str) -> bool:
+        """判断是否为加载状态文本（非真正的 AI 回复）
 
-        三阶段检测：
-        1. 等待首次出现新内容
-        2. 等待内容开始变化（跳过"理解问题"等思考阶段的静态文本）
-        3. 内容变化后稳定 → 视为完成
+        百度 AI 在生成真正回复前会短暂显示状态文本（如"图片解析中"、"理解问题"），
+        这些文本不应被视为最终响应。
+        """
+        text = text.strip()
+        if len(text) > 30:
+            return False
+        return any(phrase in text for phrase in self.LOADING_PHRASES)
+
+    async def _wait_for_response_complete(self, pre_content: str = "") -> str:
+        """等待响应完成并返回内容（参考 qwen 逻辑 + 加载状态过滤）
+
+        核心逻辑：内容稳定 + 未在生成 → 完成
+        额外处理：跳过"图片解析中"等加载状态文本，等待真正的回复出现
 
         Args:
             pre_content: 发送前页面已有的内容，用于跳过旧内容
@@ -168,13 +180,8 @@ class BaiduChat:
         t_start = time.time()
         t_first_content = None
         last_content = ""
-        content_ever_changed = False   # 内容是否变化过（区分思考阶段 vs 真正生成）
-        stable_count = 0               # 快速路径（内容稳定 + 无生成指示器）
-        stable_count_slow = 0          # 兜底路径（内容稳定 + 生成指示器仍在）
-        no_change_count = 0            # 内容从未变化的连续计数（思考阶段兜底）
-        max_stable = 3                 # 快速路径：3次 × 0.3s = 0.9s
-        max_stable_slow = 5            # 兜底路径：5次 × 0.3s = 1.5s
-        max_no_change_fallback = 30    # 思考阶段兜底：30次 × 0.3s = 9s
+        stable_count = 0
+        max_stable = 3          # 内容稳定 0.9s 即认为完成（3 × 0.3s）
         check_interval = 0.3
         timeout_ms = TIMEOUT["response_wait"]
         max_checks = int(timeout_ms / (check_interval * 1000))
@@ -186,60 +193,35 @@ class BaiduChat:
             # 获取最新回复内容
             current_content = await self._get_latest_response()
 
-            # 跳过发送前已有的内容（页面残留的旧响应/UI文本）
+            # 跳过发送前已有的内容
             if current_content and current_content == pre_content:
+                await asyncio.sleep(check_interval)
+                continue
+
+            # 跳过加载状态文本（如"图片解析中"、"理解问题"）
+            if current_content and self._is_loading_text(current_content):
+                if DEBUG and t_first_content is None:
+                    print(f"  [DEBUG] 跳过加载状态文本: {current_content!r}")
                 await asyncio.sleep(check_interval)
                 continue
 
             if current_content:
                 if t_first_content is None:
                     t_first_content = time.time()
-                    last_content = current_content
                     if DEBUG:
                         print(f"  [TIMING] 首次检测到新内容: {t_first_content - t_start:.1f}s")
                     print(f"  [DEBUG] 新内容预览: {current_content[:80]!r}")
-                    await asyncio.sleep(check_interval)
-                    continue
 
-                if current_content != last_content:
-                    # 内容在变化 → 正在生成
-                    if not content_ever_changed:
-                        content_ever_changed = True
+                if current_content == last_content and not is_generating:
+                    stable_count += 1
+                    if stable_count >= max_stable:
                         if DEBUG:
-                            print(f"  [DEBUG] 内容开始变化，进入生成阶段")
-                    stable_count = 0
-                    stable_count_slow = 0
-                    no_change_count = 0
-                    last_content = current_content
+                            print(f"  [TIMING] 内容稳定确认: {time.time() - t_start:.1f}s (检查 {i+1} 轮)")
+                        print("✓ 响应完成")
+                        return current_content
                 else:
-                    # 内容未变化
-                    if content_ever_changed:
-                        # 内容曾经变化过，现在稳定了 → 正常的完成检测
-                        if not is_generating:
-                            stable_count += 1
-                            if stable_count >= max_stable:
-                                if DEBUG:
-                                    print(f"  [TIMING] 内容稳定确认: {time.time() - t_start:.1f}s (检查 {i+1} 轮)")
-                                print("✓ 响应完成")
-                                return current_content
-                        else:
-                            stable_count_slow += 1
-                            if stable_count_slow >= max_stable_slow:
-                                if DEBUG:
-                                    print(f"  [TIMING] 内容稳定确认(兜底): {time.time() - t_start:.1f}s")
-                                print("✓ 响应完成")
-                                return current_content
-                    else:
-                        # 内容从未变化（可能还在思考阶段，如"理解问题"）
-                        no_change_count += 1
-                        if DEBUG and no_change_count == 3:
-                            print(f"  [DEBUG] 内容未变化，等待思考阶段结束...")
-                        if not is_generating and no_change_count >= max_no_change_fallback:
-                            # 等了很久内容也没变，且无生成指示器 → 兜底返回
-                            if DEBUG:
-                                print(f"  [DEBUG] 内容从未变化({no_change_count * check_interval:.0f}s)，兜底返回")
-                            print("✓ 响应完成")
-                            return current_content
+                    stable_count = 0
+                    last_content = current_content
 
             await asyncio.sleep(check_interval)
 
