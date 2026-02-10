@@ -17,7 +17,6 @@ class BaiduChat:
     def __init__(self, page: Page):
         self.page = page
         self._input_selector = None
-        self._send_selector = None
         self._stop_selector = None       # 缓存首次命中的停止按钮选择器
         self._loading_selector = None    # 缓存首次命中的加载指示器选择器
         self._response_selector = None   # 缓存首次命中的回复消息选择器
@@ -109,39 +108,36 @@ class BaiduChat:
         if pre_content:
             print(f"  [DEBUG] 发送前页面已有内容: {pre_content[:80]!r}")
 
-        # 查找并点击发送按钮（缓存 > 即时扫描 > 回车兜底）
+        # 周期性回车发送（图片上传场景下，图片可能还没真正就绪，
+        # 单次点击/回车可能无反应，需要重试直到真正发出去）
         sent = False
-        all_send_selectors = SELECTORS["send_button"] + [
-            '[class*="submit"]',
-            'button:has(svg[class*="arrow"])',
-        ]
-
-        if self._send_selector:
-            # 已缓存，即时查询
-            try:
-                btn = await self.page.query_selector(self._send_selector)
-                if btn and await btn.is_visible():
-                    await btn.click()
-                    sent = True
-                    print(f"  [DEBUG] 点击发送按钮(缓存): {self._send_selector}")
-            except Exception:
-                self._send_selector = None
-
-        if not sent:
-            btn, sel = await self._quick_find(all_send_selectors, "发送按钮")
-            if btn:
-                try:
-                    if await btn.is_visible():
-                        await btn.click()
-                        sent = True
-                        self._send_selector = sel
-                        print(f"  [DEBUG] 点击发送按钮: {sel}")
-                except Exception:
-                    pass
-
-        if not sent:
-            print("  [DEBUG] 尝试使用回车发送")
+        await input_box.click()  # 确保焦点在输入框
+        for attempt in range(30):  # 最多 30 × 0.3s = 9s
             await self.page.keyboard.press("Enter")
+            if DEBUG and attempt == 0:
+                print("  [DEBUG] 按回车发送")
+            await asyncio.sleep(0.3)
+
+            # 检测是否已发送：输入框被清空说明消息已发出
+            try:
+                val = await input_box.input_value()
+                if not val.strip():
+                    sent = True
+                    if DEBUG and attempt > 0:
+                        print(f"  [DEBUG] 第 {attempt + 1} 次回车后发送成功")
+                    break
+            except Exception:
+                pass
+
+            # 备选检测：AI 开始生成响应
+            if await self._is_generating():
+                sent = True
+                if DEBUG and attempt > 0:
+                    print(f"  [DEBUG] 第 {attempt + 1} 次回车后检测到生成中")
+                break
+
+        if not sent:
+            print("  [WARN] 周期性回车未检测到发送成功")
 
         t_sent = time.time()
         if DEBUG:
@@ -451,7 +447,6 @@ class BaiduChat:
         """开启新对话"""
         # 重置缓存的选择器
         self._input_selector = None
-        self._send_selector = None
 
         # 尝试查找新对话按钮
         new_chat_selectors = [
